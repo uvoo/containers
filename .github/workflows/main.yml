@@ -1,0 +1,19 @@
+name: Build/push nginx-alpine with ntml+ support
+
+on:
+  push:
+    branches: main
+
+jobs:
+  build-push-nginx-docker:
+    runs-on: [ubuntu-20.04]
+    steps:
+      -
+        uses: actions/checkout@v2
+      -
+        name: Run ci/cd main.sh
+        shell: bash
+        run: ./main.sh
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_USERTOKEN: ${{ secrets.DOCKERHUB_USERTOKEN }}
