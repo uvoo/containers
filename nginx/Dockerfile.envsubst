@@ -1,4 +1,4 @@
-FROM bitnami/nginx:1.21.1 AS builder
+FROM bitnami/nginx:${NGINX_VERSION} AS builder
 
 USER root
 
@@ -25,12 +25,12 @@ RUN set -x \
 
 WORKDIR /build
 
-RUN curl -OL http://nginx.org/download/nginx-1.21.1.tar.gz \
-    && tar -xvzf nginx-1.21.1.tar.gz && rm nginx-1.21.1.tar.gz \
+RUN curl -OL http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
+    && tar -xvzf nginx-${NGINX_VERSION}.tar.gz && rm nginx-${NGINX_VERSION}.tar.gz \
     && git clone https://github.com/gabihodoroaga/nginx-ntlm-module.git
 
 RUN set -x \
-  && cd nginx-1.21.1/ \
+  && cd nginx-${NGINX_VERSION}/ \
   && ./configure \
           --prefix=/etc/nginx \
           --sbin-path=/usr/sbin/nginx \
@@ -78,9 +78,9 @@ RUN set -x \
           --add-dynamic-module=../nginx-ntlm-module \
   && make modules
 
-FROM bitnami/nginx:1.21.1
+FROM bitnami/nginx:${NGINX_VERSION}
 
-COPY --from=builder /build/nginx-1.21.1/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
+COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
 
 EXPOSE 8080 8443
 WORKDIR /app

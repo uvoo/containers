@@ -1,5 +1,4 @@
 FROM bitnami/nginx:1.21.1 AS builder
-# FROM debian:buster AS builder
 
 USER root
 
@@ -9,10 +8,12 @@ ARG NGINX_VERSION=1.21.1
 RUN set -x \
     # && addgroup -g 101 -S nginx \
     # && addgroup --group 101 --system nginx \
-    && addgroup --gid 101 --system nginx \
-    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+    # && addgroup --gid 101 --system nginx \
+    # && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+RUN set -x \
+    && adduser -uid 1001 --system --no-create-home --shell /bin/false --group --disabled-login nginx
 
-RUN cat /etc/apt/sources.list
+# RUN cat /etc/apt/sources.list
 
 # RUN set -x \
 #     apt-get update -y
@@ -46,6 +47,7 @@ RUN apt-get install -y \
 
 WORKDIR /build
 
+# download nginx
 RUN curl -OL http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
     && tar -xvzf nginx-${NGINX_VERSION}.tar.gz && rm nginx-${NGINX_VERSION}.tar.gz \
     && git clone https://github.com/gabihodoroaga/nginx-ntlm-module.git
@@ -100,7 +102,8 @@ RUN cd nginx-${NGINX_VERSION}/ \
 
 FROM bitnami/nginx:1.21.1
 
-COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
+# COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
+COPY --from=builder /build/nginx-1.21.1/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
 
 EXPOSE 8000 8443
 

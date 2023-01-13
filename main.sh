@@ -4,12 +4,12 @@ set -eu
 docker_build_push(){
   # nocache="--no-cache"
   nocache=""
-  docker build $nocache --tag $org/$name:latest --tag $org/$name:$release --tag "$org/$name:$release-$os" .
+  docker build $nocache --tag $ORG/$NAME:latest --tag $ORG/$NAME:$RELEASE --tag "$ORG/$NAME:$RELEASE-$OS" .
   echo Push to docker repo in 5 seconds; sleep 5
   echo $DOCKERHUB_USERTOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin
-  docker push $org/$name:$release
-  docker push $org/$name:latest
-  docker push "$org/$name:$release-$os"
+  docker push $ORG/$NAME:$RELEASE
+  docker push $ORG/$NAME:latest
+  docker push "$ORG/$NAME:$RELEASE-$OS"
   docker logout
 }
 

@@ -1,51 +1,30 @@
-FROM bitnami/nginx:1.21.1 AS builder
-# FROM debian:buster AS builder
+FROM alpine:3.17 AS builder
 
-USER root
-
-ARG NGINX_VERSION=1.21.1
+ARG NGINX_VERSION=1.23.2
 
 # install buidl tools
 RUN set -x \
-    # && addgroup -g 101 -S nginx \
-    # && addgroup --group 101 --system nginx \
-    && addgroup --gid 101 --system nginx \
-    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
-
-RUN cat /etc/apt/sources.list
-
-# RUN set -x \
-#     apt-get update -y
-   #  apt-get update
-RUN apt-get update
-# RUN apt-get install -y build-essential git
-
-# RUN apt-get install build-dep \
-RUN apt-get install -y \
-    # && apt-get install .build-deps \
-    # build-essential git tree software-properties-common dirmngr apt-transport-https \
-    # && apt-get install --no-cache --virtual .build-deps \
+    && addgroup -g 101 -S nginx \
+    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
+    && apk add --no-cache --virtual .build-deps \
     gcc \
     libc-dev \
     make \
-    libssl-dev \
-    libpcre3-dev \
-    # zlib1g-dev \
-    # linux-headers \
+    openssl-dev \
+    pcre-dev \
+    zlib-dev \
+    linux-headers \
     libxslt-dev \
-    libgd-dev \
-    libgeoip-dev \
-    libperl-dev \
+    gd-dev \
+    geoip-dev \
+    perl-dev \
     libedit-dev \
     curl \
     git
-# RUN apt-get install git
-    # build-essential git tree software-properties-common dirmngr apt-transport-https
-    # && apt-get install .build-deps \
-    # && apt-get install --no-cache --virtual .build-deps \
 
 WORKDIR /build
 
+# download nginx
 RUN curl -OL http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
     && tar -xvzf nginx-${NGINX_VERSION}.tar.gz && rm nginx-${NGINX_VERSION}.tar.gz \
     && git clone https://github.com/gabihodoroaga/nginx-ntlm-module.git
@@ -98,7 +77,7 @@ RUN cd nginx-${NGINX_VERSION}/ \
         --add-dynamic-module=../nginx-ntlm-module \
     && make modules
 
-FROM bitnami/nginx:1.21.1
+FROM nginx:1.23.2-alpine
 
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_upstream_ntlm_module.so /etc/nginx/modules/ngx_http_upstream_ntlm_module.so
 

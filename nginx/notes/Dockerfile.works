@@ -1,5 +1,4 @@
 FROM bitnami/nginx:1.21.1 AS builder
-# FROM debian:buster AS builder
 
 USER root
 
@@ -46,6 +45,7 @@ RUN apt-get install -y \
 
 WORKDIR /build
 
+# download nginx
 RUN curl -OL http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
     && tar -xvzf nginx-${NGINX_VERSION}.tar.gz && rm nginx-${NGINX_VERSION}.tar.gz \
     && git clone https://github.com/gabihodoroaga/nginx-ntlm-module.git

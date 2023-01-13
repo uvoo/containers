@@ -1,0 +1,6 @@
+tmp/
+trash/
+trash2/
+.env.secrets
+.dev.env.secrets
+nginx/Dockerfile
