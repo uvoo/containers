@@ -1,5 +1,7 @@
-# containers
+# Uvoo containers
 uvoo docker container builds
+
+The docker build/push only runs when a changed is detected in container folder between last two commits. 
 
 Use Dockerfile.envsubst instead of Dockerfile if you have dynamic variables in your Dockerfile base on .env
 

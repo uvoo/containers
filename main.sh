@@ -19,10 +19,9 @@ containers=(
 
 main(){
   for container in "${containers[@]}"; do
-    echo $container
     cd $container
-    # skip build/push if no changes in folder
     [ $(git diff @^ ./ | wc -l) -eq 0 ] && continue
+    echo "Building $container & pushing to dockehub."
     . .env
     ../scripts/process-templates.sh
     docker_build_push
