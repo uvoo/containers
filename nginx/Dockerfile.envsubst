@@ -14,7 +14,6 @@ RUN set -x \
     libssl-dev \
     libpcre3-dev \
     zlib1g-dev \
-    # linux-headers \
     libxslt-dev \
     libgd-dev \
     libgeoip-dev \
@@ -22,6 +21,7 @@ RUN set -x \
     libedit-dev \
     curl \
     git
+    # linux-headers \
 
 WORKDIR /build
 
@@ -74,7 +74,6 @@ RUN set -x \
           --with-stream_ssl_preread_module \
           --with-cc-opt='-Os -fomit-frame-pointer' \
           --with-ld-opt=-Wl,--as-needed \
-          # add the ntlm module
           --add-dynamic-module=../nginx-ntlm-module \
   && make modules
 
