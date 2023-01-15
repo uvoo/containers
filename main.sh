@@ -22,7 +22,6 @@ main(){
     cd $container
     # [ $(git diff @^ ./ | wc -l) -eq 0 ] && continue
     echo "Building container $container & pushing to dockerhub."
-    exit
     . .env
     ../scripts/process-templates.sh
     docker_build_push
