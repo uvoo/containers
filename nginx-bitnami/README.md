@@ -1,11 +1,6 @@
 # NGINX OpenSource + Additional Modules
 
-This NGINX currently based on nginx stable debian in order use with helm.
-
-https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
-
-## If you want more features use mainline
-https://github.com/nginxinc/docker-nginx/blob/master/mainline/debian/Dockerfile
+This NGINX currently based on Debian bitnami nginx in order use with helm.
 
 We are using dynamic modules so we don't have to recompile nginx binary.
 
@@ -18,9 +13,7 @@ Read about dynamic modules https://docs.nginx.com/nginx/admin-guide/dynamic-modu
 ## Includes additional support for
 - ntlm
 
-## Options of builds 
-- https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
-- https://github.com/nginxinc/docker-nginx/blob/master/mainline/debian/Dockerfile
+## Based on
 - https://github.com/bitnami/containers/tree/main/bitnami/nginx
 - https://github.com/gabihodoroaga/nginx-ntlm-module/tree/master/docker/alpine/dynamic
 - https://github.com/gabihodoroaga/nginx-ntlm-module/blob/master/docker/alpine/static
