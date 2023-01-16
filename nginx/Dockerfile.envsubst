@@ -93,7 +93,7 @@ RUN touch /var/run/nginx.pid && \
 
 USER nginx
 
-EXPOSE 80 443
+EXPOSE 8080 8443
 STOPSIGNAL SIGQUIT
 
 CMD ["nginx", "-g", "daemon off;"]
