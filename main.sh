@@ -15,6 +15,7 @@ docker_build_push(){
 
 containers=(
   "nginx"
+  "http-echo"
 )
 
 main(){
