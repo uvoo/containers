@@ -30,6 +30,7 @@ docker_create_repo(){
   o=$(curl -o /dev/null -w "%{http_code}" -sH "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${repo}")
 
   if [ ${o} -ne 200 ]; then
+    echo "Creating repo $REPO in dockerhub."
 
     json=$(cat <<-EOF
       {
