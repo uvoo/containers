@@ -63,7 +63,8 @@ main(){
     exit 1
   fi
   . "${DOT_ENV_NAME}.env"
-  . "${DOT_ENV_NAME}.env.secrets"
+  # . "${DOT_ENV_NAME}.env.secrets"
+
    # ./scripts/process-templates.sh
 
   # out=$(./scripts/az-login.sh)
