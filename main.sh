@@ -10,10 +10,49 @@ fi
 branch=$1
 cnf_file=info
 
+
+docker_create_repo(){
+
+  # if [[ $# -ne 2 ]]; then
+  #   echo "Usage: $0 <org> <name>"
+  #   echo "Usage: $0 uvoo example1"
+  #   exit 1
+  # fi
+
+  repo=$1
+  IFS='/' read -r -a repo_parts <<< "$REPO"
+
+  # local ORG=$1
+  # export NAME=$2
+  # export REPO="$ORG/$NAME"
+  export TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username": "'${DOCKERHUB_USERNAME}'", "password": "'${DOCKERHUB_TOKEN}'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+  o=$(curl -o /dev/null -w "%{http_code}" -sH "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${repo}")
+
+  if [ ${o} -ne 200 ]; then
+
+    json=$(cat <<-EOF
+      {
+        "name": "${repo_parts[1]}",
+        "is_private": false,
+        "description": "${repo_parts[1]} docker container",
+        "full_description": "${repo_parts[1]} docker container repo."
+      }
+EOF
+    )
+    curl -s -X POST -H "Authorization: JWT ${TOKEN}" \
+      "https://hub.docker.com/v2/repositories/${repo_parts[0]}/" \
+      -H 'Content-Type: application/json' \
+      -d "${json}"
+  fi
+
+}
+
 docker_build_push(){
-  export REPO=$1
-  export TAG=$2
-  export IMAGE=$REGISTRY/$REPO
+  REPO=$1
+  TAG=$2
+  IMAGE=$REGISTRY/$REPO
+  docker_create_repo $REPO
   # nocache="--no-cache"
   nocache=""
   # docker build $nocache --tag $REPO:latest --tag $REPO:$RELEASE --tag "$ORG/$NAME:$RELEASE-$OS" .
