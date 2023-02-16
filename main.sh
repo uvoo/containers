@@ -114,13 +114,11 @@ main(){
       echo "$git_diff"
       echo "Building repo $repo version $version & pushing to container registry."
     #   container_build_push "${repo}" "${version}"
-    if [ -f .env ]; then
-      . .env
-    fi
-    echo do
-    pwd
-    # ../../scripts/process-templates.sh
-    # docker_build_push "${repo}" "${version}"
+      if [ -f .env ]; then
+        . .env
+      fi
+      ../../scripts/process-templates.sh
+      docker_build_push "${repo}" "${version}"
       cd ../../
     fi
   done
