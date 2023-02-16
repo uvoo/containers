@@ -22,7 +22,7 @@ docker_build_push(){
   echo $DOCKERHUB_USERTOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin
   docker push "$REPO:$TAG"
   docker push $REPO:latest
-  # docker push "$ORG/$NAME:$RELEASE-$OS"
+  docker push "$ORG/$NAME:$RELEASE-$OS"
   docker logout
 }
 
