@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 
 if [[ -z "$@" ]]; then
   echo "Usage: $0 <branch-name>"
@@ -74,9 +74,11 @@ main(){
     ! -path "./scripts*" ! -path "./notes*" ! -path "./.git*" \
     ! -path "./trash*" ! -path "./.github*" -printf '%P\n'))
 
-  merge_hash1=$(git log --merges --format="%H" -n 1)
-  merge_hash2=$(git log --merges --format="%H" -n 2 | tail -1)
+  # merge_hash1=$(git log --merges --format="%H" -n 1)
+  # merge_hash2=$(git log --merges --format="%H" -n 2 | tail -1)
   current_branch=$(git rev-parse --abbrev-ref HEAD)
+  merge_hash1=$(git log ${current_branch} --first-parent --merges --format="%H" -n 1)
+  merge_hash2=$(git log ${current_branch} --first-parent --merges --format="%H" -n 2 | tail -1)
   echo "Running container diffs for branch $current_branch."
   echo "If changes between last merge to dev/main will update container."
   echo "Output of builds will be displayed."
