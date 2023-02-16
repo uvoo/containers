@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 
 if [[ -z "$@" ]]; then
   echo "Usage: $0 <branch-name>"
