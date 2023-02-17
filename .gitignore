@@ -5,3 +5,4 @@ trash2/
 .dev.env.secrets
 nginx/Dockerfile
 nginx-bitnami/Dockerfile
+uvoo/zabbix-server-pgsql/Dockerfile
