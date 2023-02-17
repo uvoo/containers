@@ -1,0 +1,12 @@
+---
+- name: Checking Services on Windows
+  gather_facts: True 
+  hosts: all
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Sumo Collector Started
+      win_service:
+        name: sumo-collector
+        state: started
+      when: ansible_facts['os_family'] == "Windows"
