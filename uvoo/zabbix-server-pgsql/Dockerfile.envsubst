@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1
+FROM $SRC_REPO:$SRC_REPO_TAG
+USER root
+
+# start custom
+ADD ./alertscripts /usr/lib/zabbix/alertscripts
+ADD ./externalscripts /usr/lib/zabbix/externalscripts
+ADD ./mibs /var/lib/zabbix/mibs
+RUN chown -R zabbix /usr/lib/zabbix/externalscripts /usr/lib/zabbix/alertscripts
+# RUN chmod -R +x /usr/lib/zabbix/externalscripts/* /usr/lib/zabbix/alertscripts/*
+
+ADD internal_ca_root.crt /usr/local/share/ca-certificates/internal_ca_root.crt
+RUN chmod 644 /usr/local/share/ca-certificates/internal_ca_root.crt && update-ca-certificates
+
+RUN set -eux && \
+    apt-get -y update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
+    dnsutils \
+    curl \
+    mtr \
+    netcat-openbsd \
+    python3 \
+    python3-pip \
+    libffi-dev \
+    libgit2-dev \
+    python3-dev \
+    gnupg2 \
+    gcc \
+    ca-certificates
+
+RUN curl -SL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl -SL https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+  # optional: for bcp and sqlcmd
+  # sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
+  # echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+  # source ~/.bashrc
+  # # optional: for unixODBC development headers
+  # sudo apt-get install -y unixodbc-dev
+RUN set -eux && \
+    apt-get -y update && \
+    ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
+    odbcinst \
+    odbcinst1debian2 \
+    unixodbc \
+    msodbcsql17
+    # build-essential \
+    # libssh2-1-dev \
+RUN pip3 install vonage
+    # pip3 install --no-cache-dir gitfs
+# mkdir -p /var/lib/gitfs
+# end custom
+
+EXPOSE 10051/TCP
+
+WORKDIR /var/lib/zabbix
+
+VOLUME ["/var/lib/zabbix/snmptraps", "/var/lib/zabbix/export"]
+
+COPY ["docker-entrypoint.sh", "/usr/bin/"]
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/docker-entrypoint.sh"]
+
+USER 1997
+
+CMD ["/usr/sbin/zabbix_server", "--foreground", "-c", "/etc/zabbix/zabbix_server.conf"]

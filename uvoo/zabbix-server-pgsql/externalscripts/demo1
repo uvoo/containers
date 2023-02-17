@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# set -e
+
+hostnamectl > /dev/null 2>&1
+echo $?

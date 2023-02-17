@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+if [[ -z "${3}" ]]; then
+  echo "Usage: $0 <action> <hostname of url> <port>"
+  echo "Example: $0 expiration www.google.com 443"
+  exit 1
+fi
+
+action=$1
+hostname=$2
+port=$3
+
+if [[ "$action" == "expiration" ]] ; then
+  cert=$(echo "Q" | openssl s_client -servername $hostname -connect $hostname:$port 2>/dev/null)
+  expire_date=$(echo "$cert" | openssl x509 -noout -dates | grep "notAfter=" | cut -d "=" -f2)
+  date_s=$(date -d "${expire_date}" +%s)
+  now_s=$(date -d now +%s)
+  days_before_expiration=$(( (date_s - now_s) / 86400 ))
+  echo $days_before_expiration
+else
+  echo "E: Unsupported action!"
+fi

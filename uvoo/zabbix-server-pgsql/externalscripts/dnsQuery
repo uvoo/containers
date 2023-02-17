@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+match=10.
+if [[ -z "${2}" ]]; then
+  echo "Usage: $0 <dns host> <query name>"
+  echo "Example: $0 10.250.36.2 www.example.com"
+  exit 1
+fi
+dns_host=$1
+query_name=$2
+
+r=$(dig +short @${dns_host} ${query_name})
+echo $r

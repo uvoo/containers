@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+# Mangement url of this api and keys at https://dashboard.nexmo.com/
+import os
+from pprint import pprint
+import sys
+
+import vonage
+
+# set by env vars see README.md
+# application_id = ""
+# phone_from = ''
+# sms_key = ''
+# sms_secret = ''
+
+
+def main():
+    if len(sys.argv) < 4:
+        print(f"Usage: {sys.argv[0]} <phone_to> <subject> <text>")
+        print(f'Example: {sys.argv[0]} 1801xxxyyyy "Yo Test" "This is a test"')
+        sys.exit()
+    phone_to = sys.argv[1]
+    subject = sys.argv[2]
+    phone_text = sys.argv[3]
+    phone_text = f"subject: {subject}\nbody: {phone_text}"
+
+    application_id = os.getenv('NEXMO_APPLICATION_ID')
+    phone_from = os.getenv('NEXMO_PHONE_FROM')
+    private_key = os.getenv('NEXMO_API_SECRET')
+    sms_key = os.getenv('NEXMO_SMS_KEY')
+    sms_secret = os.getenv('NEXMO_SMS_SECRET')
+
+    # call(phone_from, phone_to, phone_text, application_id, private_key)
+    text(phone_from, phone_to, phone_text, sms_key, sms_secret)
+
+
+def call(phone_from, phone_to, phone_text, application_id, private_key):
+    client = vonage.Client(
+        application_id=application_id,
+        private_key=private_key, )
+
+    ncco = [
+      {
+        'action': 'talk',
+        'voiceName': 'Kendra',
+        'text': phone_text
+      }
+    ]
+
+    response = client.create_call({
+      'to': [{
+        'type': 'phone',
+        'number': phone_to
+      }],
+      'from': {
+        'type': 'phone',
+        'number': phone_from
+      },
+      'ncco': ncco
+    })
+
+    pprint(response)
+
+
+def text(phone_from, phone_to, phone_text, sms_key, sms_secret):
+    client = vonage.Client(key=sms_key, secret=sms_secret)
+    sms = vonage.Sms(client)
+
+    responseData = sms.send_message(
+        {
+            "from": phone_from,
+            "to": phone_to,
+            "text": phone_text,
+        }
+    )
+
+    pprint(responseData)
+
+if __name__ == "__main__":
+    main()
