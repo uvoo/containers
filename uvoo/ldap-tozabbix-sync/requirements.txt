@@ -1,0 +1,6 @@
+ldap3==2.9
+pyzabbix==1.0.0
+PyYAML>=5.4
+deepdiff==5.5.0
+Jinja2
+argparse
