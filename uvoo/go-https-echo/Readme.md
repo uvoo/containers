@@ -2,9 +2,16 @@
 
 This is a echo http/https server for back-end testing.
 
-The tls crt & key pem files are created if it doesn't exist in container.
+The tls crt & key pem files are created via openssl command in shell if it doesn't exist in container.
 
-listeners are on 8080 (http) and 8443 (https)
+This app requires openssl cli command be available on the system. Usually it is there be default.
+
+Listeners are on 8080 (http) and 8443 (https) by default but you may change via env vaars.
+```
+export HTTP_PORT=8080
+export HTTPS_PORT=8443
+export HTTPS_TLS_FQDN=demo.example.com
+```
 
 ```
 docker pull uvoo/go-https-echo
