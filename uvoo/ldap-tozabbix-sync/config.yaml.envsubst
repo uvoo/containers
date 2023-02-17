@@ -1,0 +1,14 @@
+---
+zabbix:
+  url: ${ZBXLDAPSYNC_ZBX_URL}
+  user: ${ZBXLDAPSYNC_ZBX_USER}
+  password: ${ZBXLDAPSYNC_ZBX_USER_PASS}
+  default-role: ${ZBXLDAPSYNC_ZBX_DEFAULT_ROLE}
+
+ldap:
+  uri: ${ZBXLDAPSYNC_LDAP_URI}
+  bindUser: ${ZBXLDAPSYNC_LDAP_BIND_USER}
+  bindPassword: ${ZBXLDAPSYNC_LDAP_BIND_PASS}
+
+groups:
+  ${ZBXLDAPSYNC_GROUPS}

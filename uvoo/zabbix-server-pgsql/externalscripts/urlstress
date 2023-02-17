@@ -1,0 +1,37 @@
+#!/bin/bash
+set -eu
+if [[ "$#" -lt 5 ]]; then
+  echo "Usage: $0 <action> <url> <parallel count> <total count> <text>"
+  echo "Example: $0 <failures/total-seconds/> https://api.dev.example.com/app/health 2 5 Healthy"
+  exit
+fi
+action=$1
+url=$2
+tcount=$3
+pcount=$4
+text=$5
+
+
+load(){
+  start_time=$(date +%s%N)
+  r=$(seq $tcount | xargs -n 1 -P $pcount bash -c "curl $url -s | grep $text > /dev/null || echo 1")
+  fails=$(echo $r | wc -w)
+  end_time=$(date +%s%N)
+  diff_nanoseconds=$((end_time-start_time))
+  diff_seconds=$(bc <<< "scale=3; $diff_nanoseconds / 1000000000")
+}
+
+
+load
+
+
+if [[ $action == "failures" ]]; then
+  echo $fails
+elif [[ $action == "total-seconds" ]]; then
+  echo $diff_seconds
+  if (( $fails > 1 )); then
+    echo failures: $fails
+  fi
+else
+  echo "E: Unsupported action!"
+fi

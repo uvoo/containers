@@ -1,0 +1,14 @@
+---
+zabbix:
+  url: {{ env['ZBXLDAPSYNC_ZBX_URL'] }}
+  user: {{ env['ZBXLDAPSYNC_ZBX_USER'] }}
+  password: {{ env['ZBXLDAPSYNC_ZBX_USER_PASS'] }}
+  default-role: {{ env['ZBXLDAPSYNC_ZBX_DEFAULT_ROLE'] }}
+
+ldap:
+  uri: {{ env['ZBXLDAPSYNC_LDAP_URI'] }}
+  bindUser: {{ env['ZBXLDAPSYNC_LDAP_BIND_USER'] }}
+  bindPassword: {{ env['ZBXLDAPSYNC_LDAP_BIND_PASS'] }}
+
+groups:
+  {{ env['ZBXLDAPSYNC_GROUPS']|indent }}

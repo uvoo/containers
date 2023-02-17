@@ -1,0 +1,59 @@
+#!/bin/bash
+set -eu
+
+# echo "Setting vars from envs"
+# envsubst < config.yaml.envsubst > config.yaml
+# echo "Starting application"
+processTemplates(){
+  for template_file in $(find . -type f -name "*.envsubst"); do
+    dst_file="${template_file%.*}"
+    echo Processing envsubst file $template_file to $dst_file with env variables.
+    envsubst < $template_file > $dst_file
+  done
+  for file in $(find . -type f -name "*.jinja"); do
+    echo Processing jinja file $file with env variables.
+    python3 createFileFromJinjaUsingEnv.py -t $file
+  done
+}
+
+sync(){
+  date
+  echo "Starting to sync. Next sync in ${ZBXLDAPSYNC_INTERVAL_SECONDS} seconds."
+
+  if [[ "${ZBXLDAPSYNC_VERBOSE}" -eq 1 ]]; then
+    verbose="--verbose"
+    # supressWarnings="-W ignore"
+  else
+    verbose=""
+  fi
+  
+  if [[ "${ZBXLDAPSYNC_VALIDATE_CERTIFICATE}" -eq 0 ]]; then
+    echo "I: Skipping certificate validations."
+    CURL_CA_BUNDLE="" python3 ldap2zabbix.py $verbose
+  else
+    python3 ldap2zabbix.py $verbose 
+  fi
+
+  echo "Connection to $ZBXLDAPSYNC_ZBX_URL"
+
+}
+
+showConf(){
+  if [[ "${ZBXLDAPSYNC_SHOW_CONF}" -eq 1 ]]; then
+    echo "====CONF===="
+    cat config.yaml
+    echo "====CONF===="
+    echo ""
+  fi
+}
+
+main(){
+  processTemplates
+  showConf
+  while true; do
+    sync
+    sleep ${ZBXLDAPSYNC_INTERVAL_SECONDS}
+  done
+}
+
+main

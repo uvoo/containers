@@ -1,0 +1,4 @@
+ansible
+pywinrm
+requests
+wheel

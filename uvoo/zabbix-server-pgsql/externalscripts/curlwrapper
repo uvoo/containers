@@ -1,0 +1,56 @@
+#!/bin/bash
+set -eu
+
+if [[ "$#" -lt 3 ]]; then
+  echo "Usage: $0 <type> <curl metric> <url>"
+  echo "Example: $0 url time_connect https://google.com"
+echo "
+====URL Type Metrics====
+time_namelookup
+time_connect
+time_appconnec
+time_pretransfer
+time_redirect
+time_starttransfer
+time_total
+"
+  exit
+fi
+curltype=$1
+metric=$2
+url=$3
+
+if [[ "$curltype" == "url" ]]; then
+  cmd="/usr/bin/curl -w \" %{$metric}\" -o /dev/null -s \"$url\""
+  metric_value=$(eval "$cmd")
+elif [[ "$curltype" == "resolve" ]]; then
+  if [[ "$#" -lt 4 ]]; then
+    echo "Usage: $0 <type> <curl metric> <url> <spoof ipaddr>"
+    echo "Example: $0 resolve time_total https://example.org 127.0.0.1"
+    exit
+  fi
+   ipaddr=$4
+   host=$(echo "$url" | awk -F/ '{print $3}')
+   cmd="/usr/bin/curl -w \"%{time_total}\" -o /dev/null -s --resolve $host:443:$ipaddr \"$url\""
+   metric_value=$(eval "$cmd")
+elif [[ "$curltype" == "connect-to" ]]; then
+  if [[ "$#" -lt 4 ]]; then
+    echo "Usage: $0 <type> <curl metric> <url> <fqdn>"
+    echo "Example: $0 connect-to time_total https://example.org myapp-svc.azurewebsites.net"
+    exit
+  fi
+   dstadc_fqdn=$4
+   host=$(echo "$url" | awk -F/ '{print $3}')
+   cmd="/usr/bin/curl -w \"%{time_total}\" -o /dev/null -s --resolve $host:443:$dstadc_fqdn \"$url\""
+   metric_value=$(eval "$cmd")
+else
+  echo "E: Unsupported type of check."
+fi
+
+code=$?
+if [[ "$code" != 0 ]]; then
+   # echo error
+    echo "$metric_value"
+else
+    echo "$metric_value"
+fi

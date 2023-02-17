@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <host dns or ip> <tcp port>"
+  echo "Example: $0 txd1-sandbox.example.com 80"
+  exit
+fi
+host=$1
+port=$2
+/usr/bin/nc -z $host $port
+echo $?

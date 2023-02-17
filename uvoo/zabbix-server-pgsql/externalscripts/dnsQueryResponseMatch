@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -e
+if [[ -z "${2}" ]]; then
+  echo "Usage: $0 <dns host> <query name> <string match>"
+  echo "Example: $0 10.250.36.2 www.example.com 10."
+  exit 1
+fi
+dns_host=$1
+query_name=$2
+match=$3
+
+rsp=$(dig +short @${dns_host} ${query_name})
+# # IFS=. read ip1 ip2 ip3 ip4 <<< "$ip"
+
+if [[ $rsp =~ $match ]]; then
+  echo 0
+  exit 0
+else
+  # echo  "Query response does not match wanted value"
+  echo 1
+  exit 1
+fi

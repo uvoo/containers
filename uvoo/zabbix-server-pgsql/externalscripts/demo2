@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Hello World"
+hostnamectl
+echo "========="
+date >> /tmp/a.log
+echo 5 >> /tmp/a.log
+echo $?
+
+

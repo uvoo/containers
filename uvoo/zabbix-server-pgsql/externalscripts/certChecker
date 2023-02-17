@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+import argparse
+from datetime import datetime, timedelta, date
+from getpass import getpass
+import json
+import requests
+import sys
+
+
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('-a', '--api-key',
+                    help='DigiCert api key')
+parser.add_argument('-c', '--check-external-certs', action='store_true',
+                    help='Check expiration of external certs with Digicert.')
+parser.add_argument('-d', '--check-external-domains', action='store_true',
+                    help='Check expiration of external domains with Digicert.')
+parser.add_argument('-D', '--days-before-expires', default=90, type=int,
+                    help='Days to notify before expiration or something else.')
+# parser.print_usage = parser.print_help
+args = parser.parse_args()
+if len(sys.argv) < 2:
+  parser.print_usage()
+  sys.exit(1)
+if not args.api_key:
+  args.api_key = getpass(prompt="Enter cert api-key:")
+
+
+def certs_check_exp(data):
+  orders = data['orders']
+  now = datetime.now()
+  for order in orders:
+    try:
+      cn = order['certificate']['common_name']
+      valid_till = order['certificate']['valid_till']
+      exp = datetime.strptime(valid_till, '%Y-%m-%d')
+      exp_notify = exp - timedelta(days=args.days_before_expires)
+      if exp_notify < now and exp > now:
+        print(cn, exp)
+    except Exception as e:
+      # print(e)
+      pass
+
+
+def get_url(url, dumps=False):
+  payload = ""
+  headers = {
+    'X-DC-DEVKEY': args.api_key,
+    'Content-Type': "application/json"
+  }
+  rsp = requests.request("GET", url, data=payload, headers=headers)
+  if dumps:
+    print("dumping")
+    data = json.dumps(rsp.json(), indent=4, sort_keys=True)
+  else:
+    data = rsp.json()
+  return data
+
+
+def domain_list():
+  url = "https://www.digicert.com/services/v2/domain"
+  querystring = {"include_validation":"true"}
+  headers = {
+    'X-DC-DEVKEY': args.api_key,
+    'Content-Type': "application/json"
+  }
+  rsp = requests.request("GET", url, headers=headers, params=querystring)
+  # print(rsp.text)
+  print(json.dumps(rsp.json(), indent=4, sort_keys=True))
+
+
+def order_list():
+  url = "https://www.digicert.com/services/v2/order/certificate"
+  headers = {
+    'X-DC-DEVKEY': args.api_key,
+    'Content-Type': "application/json"
+  }
+  rsp = requests.request("GET", url, headers=headers)
+  print(json.dumps(rsp.json(), indent=4, sort_keys=True))
+
+
+def main():
+  if args.check_external_certs:
+    url = "https://www.digicert.com/services/v2/order/certificate"
+    data = get_url(url)
+    certs_check_exp(data)
+  elif args.check_external_domains:
+    url = "https://www.digicert.com/services/v2/domain"
+    data = get_url(url, dumps=True)
+    print(data)
+  else:
+    pass
+
+
+if __name__ == "__main__":
+  main()
+
+
+# Notes
+## Monitoring
+# Item Key: cert-checker["--check-external-certs","--days-before-expires",90,"--api-key",{$CA_API_KEY_RO}]
+# Trigger Expression: {ssl-certs-and-dns:cert-checker["--check-external-certs","--days-before-expires",90,"--api-key",{$CA_API_KEY_RO}].last()}<>""
+## URLS of interest
+# https://dev.digicert.com/services-api/
+# url = "https://www.digicert.com/services/v2/report/order/expiring"
+# url = "https://www.digicert.com/services/v2/domain"

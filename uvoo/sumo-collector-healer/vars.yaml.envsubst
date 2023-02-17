@@ -1,0 +1,8 @@
+ansible_user: '${ANSIBLE_USER}'
+ansible_password: '${ANSIBLE_PASSWORD}'
+ansible_connection: ${ANSIBLE_CONNECTION}
+ansible_port: ${ANSIBLE_PORT}
+ansible_winrm_scheme: ${ANSIBLE_WINRM_SCHEME}
+ansible_winrm_transport: ${ANSIBLE_WINRM_TRANSPORT}
+ansible_winrm_server_cert_validation: ${ANSIBLE_WINRM_SERVER_CERT_VALIDATION}
+ansible_host_domain: ${ANSIBLE_HOST_DOMAIN}

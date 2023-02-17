@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# set -e
+# Create .env file with ANSIBLE_USER/PASSWORD using export then . .env
+# .env
+# export ANSIBLE_USER="EXAMPLE\\myuser"
+# export ANSIBLE_PASSWORD='mypass'
+# export ANSIBLE_HOST_KEY_CHECKING=False  # not recommended if possible
+# . .evn
+
+if [ "$#" -ne 2 ]; then
+  echo "Usage $0 <hostname> <script>"
+  echo "Example $0 host.example.com ./test.ps1"
+  exit
+fi
+host=$1
+script=$2
+# inventory=$(mktemp -p tmp.inventory.XXXXX.yaml)
+inventory=$(mktemp -p ~/tmp tmp.inventory.XXXXX.yaml)
+ansible_user=${ANSIBLE_USER}
+ansible_password=${ANSIBLE_PASSWORD}
+winrm_port=5985
+ssh_port=22
+os=""
+
+# ping_status=$(ping -c 1 $host > /dev/null 2>&1; echo $?)
+winrm_status=$(nc -z $host $winrm_port; echo $?)
+
+if [[ $winrm_status -eq 0 ]]; then
+  os=windows
+  windowshost="$host:"
+else
+  ssh_status=$(nc -z $host $ssh_port)
+  if [[ $ssh_status -eq 0 ]]; then
+    os=linux
+    linuxhost="$host:"
+  else
+    echo E: winrm port $winrm_port or ssh port $ssh_port are not available on $host.
+    exit 0
+  fi
+fi
+
+
+text="
+all:
+  vars:
+    ansible_user: ${ansible_user}
+    ansible_password: ${ansible_password}
+windows:
+  hosts:
+    ${windowshost}
+  vars:
+    ansible_connection: winrm
+    ansible_port: 5985
+    ansible_winrm_scheme: http
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+linux:
+  hosts:
+    $linuxhost
+  vars:
+    ansible_connection: ssh
+"
+echo "$text" > $inventory
+ansible "$host" -m "script $script" -i $inventory
+rm ${inventory}
+
+
+# NOTES
+# ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+# host ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
