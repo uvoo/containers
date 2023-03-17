@@ -10,9 +10,11 @@ RUN apt-get update
 # RUN apt-get -y install pdns-backend-pgsql pdns-backend-sqlite3 postgresql-client sqlite3 pdns-backend-bind pdns-backend-geoip
 RUN apt-get -y install pdns-backend-pgsql pdns-backend-sqlite3 postgresql-client sqlite3 curl jq dnsutils python3-pip
 RUN python3 -m pip install --break-system-packages envtpl
-RUN pyton3 -m pip cache remove *
+RUN python3 -m pip cache remove *
 # python3-full
-# python3 -m venv path/to/venv.
+# python3 -m venv venv
+# . venv/bin/activate
+# deactivate
 RUN apt-get clean
 
 ADD docker-entrypoint.sh /
