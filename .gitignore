@@ -6,3 +6,10 @@ trash2/
 nginx/Dockerfile
 nginx-bitnami/Dockerfile
 uvoo/zabbix-server-pgsql/Dockerfile
+uvoo/pdns-auth/pdns.conf
+uvoo/pdns-auth/terraform-example/backend.tf
+uvoo/pdns-auth/terraform-example/.env.secrets
+**/.terraform/*
+*.tfstate.*
+*.tfstate
+.terraform.lock.hcl

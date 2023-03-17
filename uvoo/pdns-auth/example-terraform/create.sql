@@ -1,0 +1,2 @@
+CREATE ROLE tf_pdns WITH LOGIN PASSWORD 'PleaseChangeMe';
+CREATE DATABASE tf_pdns OWNER tf_pdns;
