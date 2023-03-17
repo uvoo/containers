@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
-DOCKER_TAG="uvoo/pdns-auth-pgsql"
-DOCKER_NAME="pdns-auth-pgsql"
+DOCKER_TAG="uvoo/pdns-auth"
+DOCKER_NAME="pdns-auth"
 docker build . --tag=$DOCKER_TAG
 docker rm -f $DOCKER_NAME || true
 # docker run -d -p 5353:53/udp -p 5353:53/tcp --restart unless-stopped --name=$DOCKER_NAME \

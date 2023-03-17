@@ -13,3 +13,24 @@ https://doc.powerdns.com/authoritative/manpages/pdnsutil.1.html
 # Terraform
 
 - https://registry.terraform.io/providers/pan-net/powerdns/latest/docs/resources/record#example-usage
+
+
+# Getting Started with Docker
+
+```
+cp example.env .env
+cp example.env.secrets .env.secrets
+```
+
+Make your variable changes in .env and .env.secrets then run
+
+```
+. .env
+. .env.secrets
+```
+
+Build and Run with run-docker.sh script
+
+```
+./run-docker.sh
+```
