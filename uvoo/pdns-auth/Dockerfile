@@ -2,9 +2,13 @@ FROM ubuntu:lunar
 # FROM ubuntu:jammy
 MAINTAINER Jeremy Kenneth Busk <jeremybusk@gmail.com>
 
-WORKDIR /app
+ARG username=app
 
-COPY pdns.conf.tpl /app/cnf/pdns.conf.tpl
+RUN useradd -ms /bin/bash -d /$username $username
+WORKDIR /$username
+RUN mkdir -p /etc/powerdns && mkdir -p /var/run/pdns
+
+COPY pdns.conf.tpl /etc/powerdns/pdns.conf.tpl
 
 RUN apt-get update
 # RUN apt-get -y install pdns-backend-pgsql pdns-backend-sqlite3 postgresql-client sqlite3 pdns-backend-bind pdns-backend-geoip
@@ -21,9 +25,13 @@ ADD docker-entrypoint.sh /
 # ADD pgsql-schema.sql /etc/pdns/
 # ADD sqlite-schema.sql /etc/pdns/
 
-EXPOSE 53/udp
-EXPOSE 53/tcp
+EXPOSE 8053/udp
+EXPOSE 8053/tcp
 EXPOSE 8081/tcp
+
+RUN chown -R $username /etc/powerdns /var/run/pdns
+
+USER $username 
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 # ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/sbin/pdns_server-startup"]
