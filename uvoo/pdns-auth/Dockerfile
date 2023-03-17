@@ -9,8 +9,9 @@ COPY pdns.conf.tpl /app/cnf/pdns.conf.tpl
 RUN apt-get update
 # RUN apt-get -y install pdns-backend-pgsql pdns-backend-sqlite3 postgresql-client sqlite3 pdns-backend-bind pdns-backend-geoip
 RUN apt-get -y install pdns-backend-pgsql pdns-backend-sqlite3 postgresql-client sqlite3 curl jq dnsutils python3-pip
+RUN python3 -m pip install envtpl
+RUN pyton3 -m pip cache remove *
 RUN apt-get clean
-RUN pip install envtpl
 
 ADD docker-entrypoint.sh /
 # ADD pgsql-schema.sql /etc/pdns/
