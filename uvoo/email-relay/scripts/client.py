@@ -29,9 +29,9 @@ def send_html_email(subject, msg_text,
     msg.set_payload(msg_text)
 
     username = fromaddr
-    username = "test@localhost" 
+    username = "tester@localhost" 
     password = 'foo'
-    # password = 'PleaseChangeMe'
+    password = 'PleaseChangeMe'
     # server = smtplib.SMTP('localhost',1587)
     server = smtplib.SMTP('localhost',8025)
     #server.ehlo() <- not required for my domain.
