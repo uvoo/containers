@@ -18,6 +18,9 @@ RUN set -eux && \
     ca-certificates \
     sasl2-bin \
     iputils-ping
+    # dovecot-core \
+    # dovecot-pop3d \
+    # dovecot-imapd \
 
 # RUN python3 -m pip install --break-system-packages envtpl
 RUN python3 -m pip --no-cache-dir install envtpl
@@ -29,6 +32,7 @@ COPY ./master.cf.tpl /etc/postfix/
 COPY ./10-auth.conf.tpl /etc/dovecot/conf.d/
 COPY ./10-master.conf.tpl /etc/dovecot/conf.d/
 COPY ./opendkim.conf /etc/
+# COPY ./opendkim.conf /etc/opendkim/
 COPY ./supervisord.conf /etc/supervisord.conf
 COPY ./rsyslog.conf /etc/rsyslog.conf
 
@@ -38,3 +42,9 @@ COPY ./docker-entrypoint.sh /app/
 USER root
 STOPSIGNAL SIGUSR1
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+
+# TRASH
+# COPY ./scripts/tests.sh . 
+# RUN chmod +x tests.sh
+# SHELL ["/bin/bash", "-c"]
