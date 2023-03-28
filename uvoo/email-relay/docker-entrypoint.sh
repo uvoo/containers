@@ -1,5 +1,6 @@
 #!/bin/bash
 set -eu
+sasldb2_fp="/var/spool/postfix/etc/sasldb2"
 
 key_file=/etc/ssl/private/tls.key
 crt_file=/etc/ssl/certs/tls.crt
@@ -17,6 +18,26 @@ cd /etc/postfix/
 # notes enable submission
 # sed -i 's/^smtp      inet.*/smtp      inet  n       -       y       -       -       smtpd/g' /etc/postfix/main.cf
 # submission inet n       -       y       -       -       smtpd
+
+init_users(){
+  for smtp_user in ${SMTP_USERS}; do
+    # echo ${USERPASS} | saslpasswd2 -f $sasldb2_fp -p -c -u localhost test
+    # sasldblistusers2 -f $sasldb2_fp
+    # echo SMTP_USERNAME
+
+    # sed -e 's/.*^//' -e 's/:.*//'
+    smtp_username=$(echo $smtp_user | cut -f1 -d@)
+    smtp_domain=$(echo $smtp_user | cut -f2 -d@ | cut -f1 -d:)
+    smtp_userpass=$(echo $smtp_user | cut -f2 -d:)
+    # smtp_user=$(echo $SMTP_USERNAME | cut -f1 -d@)
+    # smtp_domain=$(echo $SMTP_USERNAME | cut -f2 -d@)
+    # echo ${SMTP_USERPASS} | saslpasswd2 -p -c -u localhost test
+    set +x
+    echo ${smtp_userpass} | saslpasswd2 -p -c -u $smtp_domain $smtp_username
+  done
+  # cp /etc/sasldb2 /var/spool/postfix/etc/
+  # sasldblistusers2
+}
 
 init_dkim(){
 
@@ -107,23 +128,17 @@ chroot(){
   # echo ${USERPASS} | saslpasswd2 -p -c -u localhost test
   sudo -u postfix mkdir -p /var/spool/postfix/etc
   cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
-  set +x
-  # sasldb2_fp="/var/spool/postfix/etc/sasldb2"
-  # echo ${USERPASS} | saslpasswd2 -f $sasldb2_fp -p -c -u localhost test
+  cp /etc/sasldb2 $sasldb2_fp 
   # sasldblistusers2 -f $sasldb2_fp
-  # echo SMTP_USERNAME
-  smtp_user=$(echo $SMTP_USERNAME | cut -f1 -d@)
-  smtp_domain=$(echo $SMTP_USERNAME | cut -f2 -d@)
-  # echo ${SMTP_USERPASS} | saslpasswd2 -p -c -u localhost test
-  echo ${SMTP_USERPASS} | saslpasswd2 -p -c -u $smtp_domain $smtp_user
-  cp /etc/sasldb2 /var/spool/postfix/etc/
+  # set +x
+  # cp /etc/sasldb2 /var/spool/postfix/etc/
   chown root:postfix /var/spool/postfix/etc/sasldb2
   chown root:postfix /etc/sasldb2
   chown root:postfix /var/spool/postfix/etc 
   chown root /var/spool/postfix
   chmod 0755 /var/spool/postfix
-  sasldblistusers2
 }
+init_users
 chroot
 
 init_dkim

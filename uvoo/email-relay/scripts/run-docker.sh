@@ -7,6 +7,7 @@ cd ../
 docker run -p 8587:25 \
   -e SMTP_USERNAME=tester@localhost \
   -e SMTP_USERPASS=PleaseChangeMe \
+  -e SMTP_USERS="tester@localhost:PleaseChangeMe tester1@localhost:PleaseChangeMe" \
   -e MYNETWORKS="127.0.0.0/8 172.16.0.0/12 10.210.77.1/32" \
   -e DKIM_DOMAINS="uvoo.me" \
   -e DKIM_SELECTORS="default mail" \
