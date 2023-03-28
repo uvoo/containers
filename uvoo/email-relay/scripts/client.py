@@ -33,7 +33,7 @@ def send_html_email(subject, msg_text,
     password = 'foo'
     password = 'PleaseChangeMe'
     # server = smtplib.SMTP('localhost',1587)
-    server = smtplib.SMTP('localhost',8025)
+    server = smtplib.SMTP('localhost',8587)
     #server.ehlo() <- not required for my domain.
     server.starttls()
     server.login(username, password)
