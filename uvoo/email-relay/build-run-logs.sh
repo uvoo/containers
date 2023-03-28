@@ -1,1 +1,1 @@
-./build.sh && ./run.sh && ./scripts/logs.sh
+./build.sh && ./run-docker.sh && ./scripts/logs.sh

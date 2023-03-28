@@ -9,8 +9,8 @@
 # service type  private unpriv  chroot  wakeup  maxproc command + args
 #               (yes)   (yes)   (no)    (never) (100)
 # ==========================================================================
-smtp      inet  n       -       y       -       -       smtpd
-8025      inet  n       -       y       -       -       smtpd
+smtp      inet  n       -       n       -       -       smtpd
+submission      inet  n       -       n       -       -       smtpd
 # smtp      inet  n       -       n       -       -       smtpd
 # 8025      inet  n       -       n       -       -       smtpd
 #smtp      inet  n       -       y       -       1       postscreen

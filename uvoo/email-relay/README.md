@@ -33,3 +33,13 @@ https://stackoverflow.com/questions/54976051/how-to-accept-self-signed-certifica
 https://doc.dovecot.org/configuration_manual/howto/postfix_and_dovecot_sasl/
 
 https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/security_guide/sect-security_guide-securing_postfix-configuring_postfix_to_use_sasl
+
+# Issues
+You can disable chroot jail if it gives you issues. It is mainly a pain with sasldb2 database defaults but have function chroot to work around it.
+
+Postfix chroot jail causes /var/spool/postfix volume issues so that has been disabled in master.cf via master.cf.tpl with "n"
+
+You can disable it it via there is sed line in docker-entrypoint.sh script
+```
+smtp      inet  n       -       n       -       -       smtpd
+```
