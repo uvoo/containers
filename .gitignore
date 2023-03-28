@@ -13,3 +13,5 @@ uvoo/pdns-auth/terraform-example/.env.secrets
 *.tfstate.*
 *.tfstate
 .terraform.lock.hcl
+uvoo/email-relay/data
+
