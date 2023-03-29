@@ -1,15 +1,9 @@
 #!/bin/bash
 set -eu
 sasldb2_fp="/var/spool/postfix/etc/sasldb2"
-
 key_file=/etc/ssl/private/tls.key
 crt_file=/etc/ssl/certs/tls.crt
-# if ! [ -f "${key_file}" ]; then
-# if ! [ "${key_file}" ]; then
-# if ! [ -n "${HEADER_SIZE_LIMIT-}" ]; then
-# [ -n "${jx-}" ] ||
 
-# if ! [ -n "${TLS_CRT-}" ] || [ -n "${TLS_KEY-}" ]; then
 if [ -n "${TLS_CRT-}" ] && [ -n "${TLS_KEY-}" ]; then
   echo "${TLS_CRT}" > $crt_file
   echo "${TLS_KEY}" > $key_file
@@ -31,22 +25,13 @@ cd /etc/postfix/
 
 init_users(){
   for smtp_user in ${SMTP_USERS}; do
-    # echo ${USERPASS} | saslpasswd2 -f $sasldb2_fp -p -c -u localhost test
-    # sasldblistusers2 -f $sasldb2_fp
-    # echo SMTP_USERNAME
-
-    # sed -e 's/.*^//' -e 's/:.*//'
     smtp_username=$(echo $smtp_user | cut -f1 -d@)
     smtp_domain=$(echo $smtp_user | cut -f2 -d@ | cut -f1 -d:)
     smtp_userpass=$(echo $smtp_user | cut -f2 -d:)
-    # smtp_user=$(echo $SMTP_USERNAME | cut -f1 -d@)
-    # smtp_domain=$(echo $SMTP_USERNAME | cut -f2 -d@)
-    # echo ${SMTP_USERPASS} | saslpasswd2 -p -c -u localhost test
     set +x
     echo ${smtp_userpass} | saslpasswd2 -p -c -u $smtp_domain $smtp_username
   done
-  # cp /etc/sasldb2 /var/spool/postfix/etc/
-  # sasldblistusers2
+  sasldblistusers2
 }
 
 init_dkim(){
@@ -166,35 +151,26 @@ postconf -e 'smtpd_tls_auth_only = yes'
 
 # postconf -e 'maillog_file = /dev/stdout'
 
-chroot(){
-  # echo ${USERPASS} | saslpasswd2 -p -c -u localhost test
-  sudo -u postfix mkdir -p /var/spool/postfix/etc
-  cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
-  cp /etc/sasldb2 $sasldb2_fp 
-  # sasldblistusers2 -f $sasldb2_fp
-  # set +x
-  # cp /etc/sasldb2 /var/spool/postfix/etc/
-  chown root:postfix /var/spool/postfix/etc/sasldb2
-  chown root:postfix /etc/sasldb2
-  chown root:postfix /var/spool/postfix/etc 
-  chown root /var/spool/postfix
+chroot_mods(){
+  sudo mkdir -p /var/spool/postfix/etc
+  sudo cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
+  sudo cp /etc/sasldb2 $sasldb2_fp
+  # sudo chown postfix /etc/sasldb2 # if not chroot
+  sudo chown root:postfix -R /var/spool/postfix/etc
+  chown root:root /var/spool/postfix
   chmod 0755 /var/spool/postfix
 }
 init_users
-chroot
-
+chroot_mods
 init_dkim
-# /usr/sbin/opendkim -f 
-# /usr/sbin/opendkim >> /var/log/opendkim.log 2>&1 
-# opendkim -D -l -f -x /etc/opendkim.conf
-# opendkim -D -l -x /etc/opendkim.conf
 
+# Startup
+# /usr/sbin/opendkim -D -l -f -x /etc/opendkim.conf >> /var/log/opendkim.log 2>&1
 # postfix start-fg
 
-    if [ ! -e "/var/log/mail/maillog" ]; then
-      mkdir -p /var/log/mail
-      echo '' > /var/log/mail/maillog
-    fi
+if [ ! -e "/var/log/mail/maillog" ]; then
+  mkdir -p /var/log/mail
+  echo '' > /var/log/mail/maillog
+fi
 
-    ## Launch
-    exec supervisord -c /etc/supervisord.conf
+exec supervisord -c /etc/supervisord.conf

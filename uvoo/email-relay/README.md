@@ -1,4 +1,5 @@
-# Postfix Docs & HostTos
+# Postfix Docs & HowTos
+- https://en.wikipedia.org/wiki/Postfix_(software)
 - https://www.cyberciti.biz/faq/how-to-configure-postfix-relayhost-smarthost-to-send-email-using-an-external-smptd/
 - https://www.postfix.org/postconf.5.html
 
