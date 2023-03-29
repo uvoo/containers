@@ -4,7 +4,17 @@ sasldb2_fp="/var/spool/postfix/etc/sasldb2"
 
 key_file=/etc/ssl/private/tls.key
 crt_file=/etc/ssl/certs/tls.crt
-if ! [ -f "${key_file}" ]; then
+# if ! [ -f "${key_file}" ]; then
+# if ! [ "${key_file}" ]; then
+# if ! [ -n "${HEADER_SIZE_LIMIT-}" ]; then
+# [ -n "${jx-}" ] ||
+
+# if ! [ -n "${TLS_CRT-}" ] || [ -n "${TLS_KEY-}" ]; then
+if [ -n "${TLS_CRT-}" ] && [ -n "${TLS_KEY-}" ]; then
+  echo "${TLS_CRT}" > $crt_file
+  echo "${TLS_KEY}" > $key_file
+else
+  echo "TLS_CRT and TLS_KEY env vars not provided so generating self signed key/cert with DNS $MYHOSTNAME."
   openssl req -x509 -nodes -days 3650 -newkey rsa:4096 -keyout tls.key -out tls.crt -subj "/CN=$MYHOSTNAME" -addext "subjectAltName = DNS:$MYHOSTNAME"
   mv tls.crt ${crt_file} 
   mv tls.key ${key_file} 
@@ -82,10 +92,46 @@ init_dkim(){
 
 sed -i 's/etc\/nss_mdns.config/nss_mdns.config etc\/sasldb2/g' /usr/lib/postfix/configure-instance.sh
 
+if [ -n "${RELAYHOST-}" ]; then
+  postconf -e "relayhost = ${RELAYHOST}"
+fi
+
+if [ -n "${RELAY_USERNAME-}" ] && [ -n ${RELAY_PASSWORD-} ]; then
+  postconf -e "smtp_sasl_password_maps = static:${RELAY_USERNAME}:${RELAY_PASSWORD}"
+fi
+# smtp_sasl_password_maps = static:YOUR-SMTP-USER-NAME-HERE:YOUR-SMTP-SERVER-PASSWORD-HERE
+
+if [ -n "${HEADER_SIZE_LIMIT-}" ]; then
+  postconf -e "header_size_limit = ${HEADER_SIZE_LIMIT}"
+else
+  postconf -e "header_size_limit = 5242880" #% 5MB 
+fi
+
+if [ -n "${SMTPD_TLS_LOGLEVEL-}" ]; then
+  postconf -e "smtpd_tls_loglevel = ${SMTPD_TLS_LOGLEVEL}"
+else
+  postconf -e "smtpd_tls_loglevel = 0"
+fi
+# postconf -e 'smtpd_tls_loglevel = 1'
+
+if [ -n "${SMTPD_TLS_SECURITY_LEVEL-}" ]; then
+  postconf -e "smtpd_tls_security_level = ${SMTPD_TLS_SECURITY_LEVEL}" 
+else
+  # Allows the Postfix SMTP server announces STARTTLS support to remote SMTP clients,
+  # but does not require that clients use TLS encryption.
+  postconf -e "smtpd_tls_security_level = may" 
+fi
+
+if ! [ -n "${SMTP_TLS_SECURITY_LEVEL-}" ]; then
+  # Requires tls encryption with outbound emails across the internet
+  postconf -e "smtp_tls_security_level = encrypt" 
+else
+  postconf -e "smtp_tls_security_level = ${SMTP_TLS_SECURITY_LEVEL}" 
+fi
+
 postconf -e 'smtpd_sasl_local_domain = $myhostname'
 postconf -e 'smtpd_sasl_auth_enable = yes'
 postconf -e 'smtpd_sasl_security_options = noanonymous'
-postconf -e 'smtpd_tls_loglevel = 1'
 # mynetworks = "127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 172.16.0.0/12 10.0.0.0/8 192.168.0.0/16"
 postconf -e "mynetworks = \"${MYNETWORKS}\""
 postconf -e 'smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination'
@@ -118,10 +164,6 @@ postconf -e 'smtpd_tls_auth_only = yes'
   # clients, but does not require that clients use TLS encryption.
   postconf -e 'smtpd_use_tls = yes'
 
-  # With this, the Postfix SMTP server announces STARTTLS support to remote SMTP clients,
-  # but does not require that clients use TLS encryption.
-  postconf -e 'smtpd_tls_security_level = may'
-  postconf -e 'smtp_tls_security_level = may'
 # postconf -e 'maillog_file = /dev/stdout'
 
 chroot(){
