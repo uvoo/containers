@@ -9,11 +9,7 @@ crt_file=/etc/ssl/certs/tls.crt
 # if ! [ -n "${HEADER_SIZE_LIMIT-}" ]; then
 # [ -n "${jx-}" ] ||
 
-# if ! [ -n "${TLS_CRT-}" ] || [ -n "${TLS_KEY-}" ]; then
-if [ -n "${TLS_CRT-}" ] && [ -n "${TLS_KEY-}" ]; then
-  echo "${TLS_CRT}" > $crt_file
-  echo "${TLS_KEY}" > $key_file
-else
+if ! [ -n "${TLS_CRT-}" ] || [ -n "${TLS_KEY-}" ]; then
   echo "TLS_CRT and TLS_KEY env vars not provided so generating self signed key/cert with DNS $MYHOSTNAME."
   openssl req -x509 -nodes -days 3650 -newkey rsa:4096 -keyout tls.key -out tls.crt -subj "/CN=$MYHOSTNAME" -addext "subjectAltName = DNS:$MYHOSTNAME"
   mv tls.crt ${crt_file} 
@@ -92,41 +88,44 @@ init_dkim(){
 
 sed -i 's/etc\/nss_mdns.config/nss_mdns.config etc\/sasldb2/g' /usr/lib/postfix/configure-instance.sh
 
-if [ -n "${RELAYHOST-}" ]; then
-  postconf -e "relayhost = ${RELAYHOST}"
+if ! [ -n "${RELAYHOST-}" ]; then
+  postfconf -e "relayhost ="
+else
+  postfconf -e "relayhost = ${RELAYHOST}"
 fi
-
-if [ -n "${RELAY_USERNAME-}" ] && [ -n ${RELAY_PASSWORD-} ]; then
-  postconf -e "smtp_sasl_password_maps = static:${RELAY_USERNAME}:${RELAY_PASSWORD}"
+if ! [ -n "${SMTP_SALS_PASSWORD_MAPS-}" ]; then
+  postfconf -e "smtp_sasl_password_maps ="
+else
+  postfconf -e "smtp_sasl_password_maps ="
 fi
 # smtp_sasl_password_maps = static:YOUR-SMTP-USER-NAME-HERE:YOUR-SMTP-SERVER-PASSWORD-HERE
 
-if [ -n "${HEADER_SIZE_LIMIT-}" ]; then
-  postconf -e "header_size_limit = ${HEADER_SIZE_LIMIT}"
+if ! [ -n "${HEADER_SIZE_LIMIT-}" ]; then
+  postfconf -e "header_size_limit = 5242880" #% 5MB 
 else
-  postconf -e "header_size_limit = 5242880" #% 5MB 
+  postfconf -e "header_size_limit = ${HEADER_SIZE_LIMIT}"
 fi
 
-if [ -n "${SMTPD_TLS_LOGLEVEL-}" ]; then
-  postconf -e "smtpd_tls_loglevel = ${SMTPD_TLS_LOGLEVEL}"
+if ! [ -n "$SMTPD_TLS_LOGLEVEL-}" ]; then
+  postfconf -e "smtpd_tls_loglevel = 0"
 else
-  postconf -e "smtpd_tls_loglevel = 0"
+  postfconf -e "smtpd_tls_loglevel = $SMTPD_TLS_LOGLEVEL"
 fi
 # postconf -e 'smtpd_tls_loglevel = 1'
 
-if [ -n "${SMTPD_TLS_SECURITY_LEVEL-}" ]; then
-  postconf -e "smtpd_tls_security_level = ${SMTPD_TLS_SECURITY_LEVEL}" 
-else
+if ! [ -n "${SMTPD_TLS_SECURITY_LEVEL-}" ]; then
   # Allows the Postfix SMTP server announces STARTTLS support to remote SMTP clients,
   # but does not require that clients use TLS encryption.
-  postconf -e "smtpd_tls_security_level = may" 
+  postfconf -e "smtpd_tls_security_level = may" 
+else
+  postfconf -e "smtpd_tls_security_level = ${SMTPD_TLS_SECURITY_LEVEL}" 
 fi
 
 if ! [ -n "${SMTP_TLS_SECURITY_LEVEL-}" ]; then
   # Requires tls encryption with outbound emails across the internet
-  postconf -e "smtp_tls_security_level = encrypt" 
+  postfconf -e "smtp_tls_security_level = encrypt" 
 else
-  postconf -e "smtp_tls_security_level = ${SMTP_TLS_SECURITY_LEVEL}" 
+  postfconf -e "smtp_tls_security_level = ${SMTP_TLS_SECURITY_LEVEL}" 
 fi
 
 postconf -e 'smtpd_sasl_local_domain = $myhostname'

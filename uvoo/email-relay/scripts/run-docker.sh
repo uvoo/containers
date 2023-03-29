@@ -18,6 +18,16 @@ docker run -p 8587:25 \
   --hostname mail.uvoo.me \
   --name postfix -d postfix
 
+# Other env vars
+# RELAY_HOST
+# RELAY_USERNAME
+# RELAY_PASSWORD
+
+# SMTPD_TLS_SECURITY_LEVEL # may
+# SMTP_TLS_SECURITY_LEVEL # encrypt
+# HEADER_SIZE_LIMIT  # 5242880" # 5MB
+# SMTPD_TLS_LOGLEVEL = 0
+
 # Notes
 # -e MYNETWORKS="127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 172.16.0.0/12 10.0.0.0/8 192.168.0.0/16" \
 # /etc/ssl/certs

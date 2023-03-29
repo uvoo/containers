@@ -1,4 +1,47 @@
+# Postfix Docs & HostTos
+- https://www.cyberciti.biz/faq/how-to-configure-postfix-relayhost-smarthost-to-send-email-using-an-external-smptd/
+- https://www.postfix.org/postconf.5.html
+
+# Environment Variables
+
+## Required Env Variables with example values
+```
+SMTP_USERNAME=tester@localhost \
+SMTP_USERPASS=PleaseChangeMe \
+SMTP_USERS="tester@localhost:PleaseChangeMe tester1@localhost:PleaseChangeMe" \
+MYNETWORKS="127.0.0.0/8 172.16.0.0/12 10.210.77.1/32" \
+DKIM_DOMAINS="uvoo.me" \
+DKIM_SELECTORS="default foo" \
+MYHOSTNAME="mail.uvoo.me" \
+```
+
+## More Optional Env Variables with defaults after equal
+```
+RELAY_HOST
+RELAY_USERNAME
+RELAY_PASSWORD
+
+SMTPD_TLS_SECURITY_LEVEL=may
+SMTP_TLS_SECURITY_LEVEL=encrypt
+HEADER_SIZE_LIMIT=5242880 # 5MB
+SMTPD_TLS_LOGLEVEL=0
+```
+
 # Getting Started with Docker
+
+TCP 25 is usually incoming mail to be delivered to local mailboxes.
+TCP 587 is usually submission mail to be relayed to external domains & mailboxes.
+
+SMTP Auth must include user and password and use TLS/SSL verification and encryption
+
+SMTP Trusted ip address will work if encrypted or non-encrypted so auth creds not being exposed.
+
+So examples like below should work.
+```
+./scripts/client.py -H localhost -P 8587 -f no-reply@example.com -t someuser@example.org -u tester@localhost -p PleaseChangeMe
+./scripts/client.py -H localhost -P 8587 -f no-reply@example.com -t someuser@example.org -N
+./scripts/client.py -H localhost -P 8587 -f no-reply@example.com -t someuser@example.org  -N -n
+```
 
 ```
 ./build.sh
@@ -8,6 +51,7 @@
 ./scripts/client.py
 ./scripts/logs.sh
 ```
+
 
 
 # General Guides

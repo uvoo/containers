@@ -1,0 +1,3 @@
+./scripts/client.py -H localhost -P 8587 -f no-reply@mydomain.com -t someuser@example.com -u tester@localhost -p PleaseChangeMe
+# ./scripts/client.py -H localhost -P 8587 -f no-reply@mydomain.com -t someuser@example.com -n -N
+# ./scripts/client.py -H localhost -P 8587 -f no-reply@mydomain.com -t someuser@example.com -N

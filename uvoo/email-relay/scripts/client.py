@@ -14,17 +14,13 @@ import email.utils as utils
 
 parser = argparse.ArgumentParser(description='Send email')
 # parser.add_argument('hostname', metavar='H', type=str,
-parser.add_argument('-u', '--username', required=True, type=str,
-                    default='tester@localhost',
-                    help='SMTP Auth full username')
-parser.add_argument('-p', '--password', required=True, type=str,
-                    default='PleaseChangeMe',
+parser.add_argument('-u', '--username', required=False, type=str,
+                    help='SMTP Auth username.')
+parser.add_argument('-p', '--password', required=False, type=str,
                     help='SMTP Auth password')
 parser.add_argument('-H', '--host', required=True, type=str,
-                    default='localhost',
                     help='SMTP Auth host in FQDN format.')
 parser.add_argument('-P', '--port', required=True, type=str,
-                    default='8587',
                     help='SMTP Auth submission port.')
 parser.add_argument('-f', '--fromaddr', required=True, type=str,
                     help='Email from address.')
@@ -38,11 +34,13 @@ parser.add_argument('-b', '--body', required=False, type=str,
                     help='Email body text.')
 parser.add_argument('-n', '--notls', action='store_true',
                     help="Don't use tls transport encryption.")
+parser.add_argument('-N', '--nologin', action='store_true',
+                    help="Don't login using SMTP Authentication credentials.")
 
 args = parser.parse_args()
 # hostname = args.hostname
 
-def send_html_email(subject, body, toaddrs, fromaddr, host, port, username, password, notls):
+def send_html_email(subject, body, toaddrs, fromaddr, host, port, username, password, notls, nologin):
 # def send_html_email(args.subject, args.msg_text,
 #                     toaddrs=['jeremybusk@gmail.com']):
                     # toaddrs=['jeremybusk@gmail.com']):
@@ -75,9 +73,11 @@ def send_html_email(subject, body, toaddrs, fromaddr, host, port, username, pass
     #server.ehlo() <- not required for my domain.
     if not notls:
       server.starttls()
-    server.login(username, password)
+    if not nologin:
+      server.login(username, password)
     server.sendmail(fromaddr, toaddrs, msg.as_string())
     server.quit()
 
 # send_html_email("test", "Test message.")
-send_html_email(args.subject, args.body, args.toaddrs, args.fromaddr, args.host, args.port, args.username, args.password, args.notls)
+send_html_email(args.subject, args.body, args.toaddrs, args.fromaddr, args.host, args.port, args.username, args.password, args.notls, args.nologin)
+
