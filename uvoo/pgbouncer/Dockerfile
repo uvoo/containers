@@ -5,7 +5,7 @@ ENV HOME="/$USER"
 WORKDIR $HOME
 
 USER root
-COPY entrypoint.sh $HOME
+COPY docker-entrypoint.sh $HOME
 
 ARG BUILD_PACKAGES="libssl-dev libudns-dev libevent-dev libc-dev python3-pip git libtool pandoc make pkg-config postgresql-client procps iproute2"
 # libaudit1 libbsd0 libc-ares2 libcap-ng0 libedit2 libevent-2.1-7 libffi7 libgcc-s1 libgmp10 libgnutls30 libhogweed6 libicu67 libidn2-0 libldap-2.4-2 liblzma5 libmd0 libnettle8 libp11-kit0 libpam0g libsasl2-2 libssl1.1 libstdc++6 libtasn1-6 libtinfo6 libunistring2 libuuid1 libxml2 libxslt1.1 locales procps zlib1g
