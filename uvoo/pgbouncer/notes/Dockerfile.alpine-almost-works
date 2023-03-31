@@ -1,0 +1,61 @@
+FROM alpine:3.17
+ENV VERSION=1.18.0
+
+ARG USER=app
+ENV HOME=/$USER
+WORKDIR $HOME
+
+ARG BUILD_PACKAGES="python3-pip git libtool pandoc ca-certificates curl libaudit1 libbsd0 libc-ares2 libcap-ng0 libedit2 libevent-2.1-7 libffi7 libgcc-s1 libgmp10 libgnutls30 libhogweed6 libicu67 libidn2-0 libldap-2.4-2 liblzma5 libmd0 libnettle8 libp11-kit0 libpam0g libsasl2-2 libssl1.1 libstdc++6 libtasn1-6 libtinfo6 libunistring2 libuuid1 libxml2 libxslt1.1 locales procps zlib1g"
+
+RUN apt update
+RUN apt install -y $BUILD_PACKAGES 
+
+
+RUN pip3 install --no-cache-dir envtpl
+
+
+RUN useradd --system app
+RUN chown -R $USER /$HOME
+
+USER $USER
+RUN mkdir -p /app/bin
+RUN mkdir -p /app/cnf
+RUN cd /tmp
+
+# RUN curl -o  /tmp/pgbouncer-$VERSION.tar.gz -L https://pgbouncer.github.io/downloads/files/$VERSION/pgbouncer-$VERSION.tar.gz
+# COPY pgbouncer-$VERSION.tar.gz /tmp/pgbouncer-$VERSION.tar.gz
+# RUN tar xf /tmp/pgbouncer-$VERSION.tar.gz && ls -lhat && \
+#   cd pgbouncer-$VERSION && \
+#   ./configure --prefix=/usr --with-udns && \
+#   make && \
+#   mv pgbouncer /app/bin/ && \
+#   cp etc/pgbouncer.ini /app/cnf/pgbouncer.ini.example && \
+#   cp etc/userlist.txt /app/cnf/userlist.txt.example
+
+RUN git clone --depth 1 https://github.com/pgbouncer/pgbouncer.git && \
+  ACLOCAL_PATH=$(aclocal --print-ac-dir) && \
+  export ACLOCAL_PATH && \
+  cd pgbouncer && \
+  git submodule init && \
+  git submodule update && \
+  ./autogen.sh && \
+  ./configure --prefix=/usr/local --with-udns && \
+  make && \
+  mv pgbouncer /app/bin/ && \
+  mv etc/pgbouncer.ini /app/cnf/pgbouncer.ini.example && \ 
+  mv etc/userlist.txt /app/cnf/userlist.txt.example && \
+  cd ../ 
+
+# RUN touch /app/cnf/userlist.txt
+
+USER root
+AUTO_ADDED_PACKAGES=$(apt-mark showauto)
+apt-get remove --purge -y $BUILD_PACKAGES $AUTO_ADDED_PACKAGES
+RUN apk del --purge py3-pip git pandoc autoconf autoconf-doc automake udns-dev curl gcc libc-dev libevent-dev libtool make libressl-dev pkgconfig
+RUN rm -rf /tmp/pgbouncer*
+
+USER $USER
+EXPOSE 5432
+ENTRYPOINT ["/entrypoint.sh"]
+# CMD ["/app/bin/pgbouncer", "/app/cnf/pgbouncer.ini"]
+# CMD ["echo $/app/bin/pgbouncer", "/app/cnf/pgbouncer.ini"]
