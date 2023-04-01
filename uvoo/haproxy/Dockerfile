@@ -70,5 +70,7 @@ RUN chmod 0777 /docker-entrypoint.sh
 
 STOPSIGNAL SIGUSR1
 
+USER root
+
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["haproxy", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
