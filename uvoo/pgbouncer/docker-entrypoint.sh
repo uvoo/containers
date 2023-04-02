@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+echo "${PGHBA}" > /app/cnf/pg_hba.conf
 echo "${USERLIST}" > /app/cnf/userlist.txt
 echo "${CONFIG}" > /app/cnf/pgbouncer.ini
 
