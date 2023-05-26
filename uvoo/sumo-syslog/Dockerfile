@@ -22,7 +22,8 @@ RUN adduser -S -D -H -u 101 -h /app -s /sbin/nologin -G app -g app app
 
 RUN chown 101:101 /etc/rsyslog.conf
 RUN chown -R 101:101 /etc/rsyslog.d
-RUN chown 101:101 /var/run/crond.pid
+RUN chown 101 /var/run
+# RUN chown 101 /var/run/crond.pid
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod 0777 /app/docker-entrypoint.sh
 # STOPSIGNAL SIGUSR1
