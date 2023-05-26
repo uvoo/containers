@@ -24,3 +24,4 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_USERTOKEN: ${{ secrets.DOCKERHUB_USERTOKEN }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_USERTOKEN }}

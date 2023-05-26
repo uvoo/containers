@@ -59,8 +59,8 @@ docker_build_push(){
   # docker build $nocache --tag $REPO:latest --tag $REPO:$RELEASE --tag "$ORG/$NAME:$RELEASE-$OS" .
   docker build $nocache --tag $REPO:latest --tag "$REPO:$TAG" .
   echo Push to docker repo in 10 seconds; sleep 10
-  # echo ${DOCKERHUB_PASSWORD} | docker login -u $DOCKERHUB_USERNAME --password-stdin
-  docker login -u $DOCKERHUB_USERNAME -p ${DOCKERHUB_PASSWORD}
+  echo ${DOCKERHUB_PASSWORD} | docker login -u $DOCKERHUB_USERNAME --password-stdin
+  # docker login -u $DOCKERHUB_USERNAME -p ${DOCKERHUB_PASSWORD}  # this is deprecated
   docker push "$REPO:$TAG"
   docker push $REPO:latest
   # docker push "$ORG/$NAME:$RELEASE-$OS"
@@ -104,6 +104,7 @@ main(){
     exit 1
   fi
   . "${DOT_ENV_NAME}.env"
+  # echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin
   # . "${DOT_ENV_NAME}.env.secrets"
 
    # ./scripts/process-templates.sh
