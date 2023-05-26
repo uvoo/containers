@@ -16,9 +16,9 @@ $WorkDirectory /var/spool/rsyslog
 
 
 $ModLoad imudp.so
-$UDPServerRun 514
+$UDPServerRun 8514
 $ModLoad imtcp.so
-$InputTCPServerRun 514
+$InputTCPServerRun 8514
 # $template DynamicFile,"/var/log/hosts/%HOSTNAME%/%syslogfacility-text%.log"
 # *.*    -?DynamicFile
 *.* -/dev/stdout
