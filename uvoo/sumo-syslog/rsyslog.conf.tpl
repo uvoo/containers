@@ -19,8 +19,12 @@ $ModLoad imudp.so
 $UDPServerRun 8514
 $ModLoad imtcp.so
 $InputTCPServerRun 8514
-# $template DynamicFile,"/var/log/hosts/%HOSTNAME%/%syslogfacility-text%.log"
-# *.*    -?DynamicFile
+{% if LOG_TO_VAR_LOG_HOSTS is defined  -%}
+  {% if LOG_TO_VAR_LOG_HOSTS == "true" -%}
+$template DynamicFile,"/var/log/hosts/%HOSTNAME%/%syslogfacility-text%.log"
+*.*    -?DynamicFile
+  {%- endif %}
+{%- endif %}
 {% if LOG_TO_STDOUT is defined  -%}
   {% if LOG_TO_STDOUT == "true" -%}
 *.* -/dev/stdout
