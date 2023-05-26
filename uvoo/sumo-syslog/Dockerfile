@@ -15,7 +15,7 @@ EXPOSE	8514
 # CMD	["/app/rsyslogd", "-n", "-f/etc/rsyslog.conf", "-M."]
 # CMD	["/usr/sbin/rsyslogd", "-n"]
 # adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
-adduser -S -D -H -u 101 -h /app -s /sbin/nologin -G app -g app app
+RUN adduser -S -D -H -u 101 -h /app -s /sbin/nologin -G app -g app app
 RUN chown 101:101 /etc/rsyslog.conf
 RUN chown -R 101:101 /etc/rsyslog.d
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
