@@ -16,8 +16,13 @@ EXPOSE	8514
 # CMD	["/usr/sbin/rsyslogd", "-n"]
 # adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
 RUN adduser -S -D -H -u 101 -h /app -s /sbin/nologin -G app -g app app
+# RUN groupadd crond-users && \
+#     chgrp crond-users /var/run/crond.pid && \
+#     usermod -a -G crond-users 1001510000
+
 RUN chown 101:101 /etc/rsyslog.conf
 RUN chown -R 101:101 /etc/rsyslog.d
+RUN chown 101:101 /var/run/crond.pid
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod 0777 /app/docker-entrypoint.sh
 # STOPSIGNAL SIGUSR1
