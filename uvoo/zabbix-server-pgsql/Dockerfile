@@ -1,16 +1,19 @@
 # syntax=docker/dockerfile:1
-FROM $SRC_REPO:$SRC_REPO_TAG
+FROM zabbix/zabbix-server-pgsql:6.0.18-ubuntu
 USER root
 
-# start custom
 ADD ./alertscripts /usr/lib/zabbix/alertscripts
 ADD ./externalscripts /usr/lib/zabbix/externalscripts
 ADD ./mibs /var/lib/zabbix/mibs
+# RUN chown -R zabbix:zabbix /usr/lib/zabbix/externalscripts /usr/lib/zabbix/alertscripts
 RUN chown -R zabbix /usr/lib/zabbix/externalscripts /usr/lib/zabbix/alertscripts
 # RUN chmod -R +x /usr/lib/zabbix/externalscripts/* /usr/lib/zabbix/alertscripts/*
+# COPY ./alertscripts /usr/lib/zabbix/alertscripts
+# COPY ./externalscripts /usr/lib/zabbix/externalscripts
+# COPY alertscripts /usr/lib/zabbix/alertscripts
+# COPY externalscripts /usr/lib/zabbix/externalscripts
 
-ADD internal_ca_root.crt /usr/local/share/ca-certificates/internal_ca_root.crt
-RUN chmod 644 /usr/local/share/ca-certificates/internal_ca_root.crt && update-ca-certificates
+# start custom
 
 RUN set -eux && \
     apt-get -y update && \
@@ -33,7 +36,7 @@ RUN curl -SL https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc
 
   # optional: for bcp and sqlcmd
   # sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
-  # echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+  # echo 'export PATH="/home/busk/.local/bin:/home/busk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/local/go/bin:/home/busk/.local/bin:/home/busk/go/bin:/opt/mssql-tools/bin"' >> ~/.bashrc
   # source ~/.bashrc
   # # optional: for unixODBC development headers
   # sudo apt-get install -y unixodbc-dev
@@ -57,7 +60,7 @@ WORKDIR /var/lib/zabbix
 
 VOLUME ["/var/lib/zabbix/snmptraps", "/var/lib/zabbix/export"]
 
-COPY ["docker-entrypoint.sh", "/usr/bin/"]
+# COPY ["docker-entrypoint.sh", "/usr/bin/"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/docker-entrypoint.sh"]
 
