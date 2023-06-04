@@ -115,7 +115,7 @@ main(){
 
   cd uvoo/zabbix-agent2/
   echo "${INTERNAL_CA_ROOT_CRT}" > internal_ca_root.crt
-  cd ../
+  cd ../../
 
   repos=($(find . -maxdepth 2 -mindepth 2 -type d \
     ! -path "./scripts*" ! -path "./notes*" ! -path "./.git*" \
