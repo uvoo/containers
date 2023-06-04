@@ -5,7 +5,6 @@ trash2/
 .dev.env.secrets
 nginx/Dockerfile
 nginx-bitnami/Dockerfile
-uvoo/zabbix-server-pgsql/Dockerfile
 uvoo/pdns-auth/pdns.conf
 uvoo/pdns-auth/terraform-example/backend.tf
 uvoo/pdns-auth/terraform-example/.env.secrets
@@ -15,4 +14,4 @@ uvoo/pdns-auth/terraform-example/.env.secrets
 .terraform.lock.hcl
 uvoo/email-relay/data
 uvoo/email-relay/test-email.sh
-
+uvoo/sumo-syslog/rsyslog.conf

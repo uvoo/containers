@@ -57,6 +57,7 @@ docker_build_push(){
   # nocache="--no-cache"
   nocache=""
   # docker build $nocache --tag $REPO:latest --tag $REPO:$RELEASE --tag "$ORG/$NAME:$RELEASE-$OS" .
+  # docker build --build-arg arg=2.3 .
   docker build $nocache --tag $REPO:latest --tag "$REPO:$TAG" .
   echo Push to docker repo in 10 seconds; sleep 10
   echo ${DOCKERHUB_PASSWORD} | docker login -u $DOCKERHUB_USERNAME --password-stdin
@@ -111,6 +112,10 @@ main(){
 
   # out=$(./scripts/az-login.sh)
   # out=$(./scripts/update_kubectl_host_files.sh $RGRP_NAME $AKS_NAME)
+
+  cd uvoo/zabbix-agent2/
+  echo "${INTERNAL_CA_ROOT_CRT}" > internal_ca_root.crt
+  cd ../
 
   repos=($(find . -maxdepth 2 -mindepth 2 -type d \
     ! -path "./scripts*" ! -path "./notes*" ! -path "./.git*" \
