@@ -14,6 +14,9 @@ grep 6.0.18 *
 git add ., commit push
 ```
 
+## Internal CA Root Cert
+This is created in /main.sh and is optional if you actually want it.
+
 
 Getting current files
 ```
