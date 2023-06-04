@@ -6,6 +6,14 @@ https://github.com/zabbix/zabbix/tree/master/templates/db/postgresql
  
 https://github.com/zabbix/zabbix-docker/tree/6.0/Dockerfiles/agent2/alpine
 
+## Updating
+```
+grep 6.0.18 *
+# update all instances with new version i.e. 6.0.19
+./updateFiles.sh
+git add ., commit push
+```
+
 
 Getting current files
 ```
