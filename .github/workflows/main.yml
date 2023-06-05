@@ -26,4 +26,3 @@ jobs:
           DOCKERHUB_USERTOKEN: ${{ secrets.DOCKERHUB_USERTOKEN }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_USERTOKEN }}
           INTERNAL_CA_ROOT_CRT: ${{ secrets.INTERNAL_CA_ROOT_CRT }}
-          # INTERNAL_CA_ROOT_CRT: ${{ vars.INTERNAL_CA_ROOT_CRT }}
