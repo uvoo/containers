@@ -113,9 +113,10 @@ main(){
   # out=$(./scripts/az-login.sh)
   # out=$(./scripts/update_kubectl_host_files.sh $RGRP_NAME $AKS_NAME)
 
-  cd uvoo/zabbix-agent2/
-  echo "${INTERNAL_CA_ROOT_CRT}" > internal_ca_root.crt
-  cd ../../
+  # cd uvoo/zabbix-agent2/
+  # echo "${INTERNAL_CA_ROOT_CRT}" > internal_ca_root.crt
+  echo "${INTERNAL_CA_ROOT_CRT}" > uvoo/zabbix-agent2/internal_ca_root.crt
+  # cd ../../
 
   repos=($(find . -maxdepth 2 -mindepth 2 -type d \
     ! -path "./scripts*" ! -path "./notes*" ! -path "./.git*" \
