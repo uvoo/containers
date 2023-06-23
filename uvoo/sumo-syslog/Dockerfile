@@ -2,9 +2,12 @@ FROM	ubuntu:22.04
 WORKDIR /app
 ENV	DEBIAN_FRONTEND=noninteractive
 RUN	apt-get -y update \
-	&& apt-get -y install rsyslog rsyslog-gnutls python3 python3-pip
+	&& apt-get -y install rsyslog rsyslog-gnutls python3 python3-pip supervisor
 RUN pip3 install envtpl
 
+COPY ./supervisord.conf /etc/supervisord.conf
+COPY ./stop-supervisor.sh /app/stop-supervisor.sh
+RUN chmod 0777 /app/stop-supervisor.sh
 COPY rsyslog.conf.tpl /etc/rsyslog.conf.tpl
 COPY digicert_ca.crt /etc/rsyslog.d/digicert_ca.crt
 EXPOSE	8514
