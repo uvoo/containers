@@ -16,14 +16,15 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # ADD USER FOR SSH LOGIN
 # RUN useradd -ms /bin/bash
 RUN useradd -m -d ${USERDIR} -s /bin/bash -u 1001 ${USERNAME}
-USER ${USERNAME}
-# RUN mkdir -p ${USERDIR}/.ssh
-RUN mkdir -p ~/.ssh
-RUN chmod 700 ~/.ssh
-# RUN touch ${USERDIR}/.ssh/authorized_keys
-RUN touch ~/.ssh/authorized_keys
-RUN chmod 600 ~/.ssh/authorized_keys
-USER root
+# USER ${USERNAME}
+# # RUN mkdir -p ${USERDIR}/.ssh
+# RUN mkdir -p ~/.ssh
+# RUN chmod 700 ~/.ssh
+# # RUN touch ${USERDIR}/.ssh/authorized_keys
+# RUN touch ~/.ssh/authorized_keys
+# RUN chmod 600 ~/.ssh/authorized_keys
+# USER root
+
 # RUN touch ${USERDIR}/.ssh/authorized_keys
 # RUN chown -R ${USERNAME}:${USERNAME} ${USERDIR}/.ssh
 # RUN chown ${USERNAME}:${USERNAME} ${USERDIR}/.ssh
