@@ -1,10 +1,10 @@
 #!/bin/bash
 set -eu
-echo "Starting certstrap-sshd."
+echo "Starting certstrap-ssh."
 
 file="${USERDIR}/.ssh/authorized_keys"
 if [[ -v AUTHORIZED_KEYS ]]; then
-    echo "${AUTHORIZED_KEYS}" | sudo -u ${USERNAME} tee > $file
+    echo "${AUTHORIZED_KEYS}" | sudo -u ${USERNAME} tee $file
 fi
 
 if [[ -v USERPASSWORD ]]; then
