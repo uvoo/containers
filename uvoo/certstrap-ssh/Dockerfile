@@ -15,9 +15,11 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # ADD USER FOR SSH LOGIN
 # RUN useradd -ms /bin/bash
 RUN useradd -m -d ${USERDIR} -s /bin/bash -u 1001 ${USERNAME}
+# USER ${USERNAME}
 RUN mkdir -p ${USERDIR}/.ssh
-RUN touch ${USERDIR}/.ssh/authorized_keys
-RUN chown -R ${USERNAME}:${USERNAME} ${USERDIR}/.ssh
+# RUN touch ${USERDIR}/.ssh/authorized_keys
+# RUN chown -R ${USERNAME}:${USERNAME} ${USERDIR}/.ssh
+RUN chown ${USERNAME}:${USERNAME} ${USERDIR}/.ssh
 
 COPY README.md .
 COPY example1.sh .
@@ -38,6 +40,7 @@ RUN set -eux && \
     nano \
     openssh-server \
     openssl \
+    sudo \
     vim
 
 RUN apt-get clean
