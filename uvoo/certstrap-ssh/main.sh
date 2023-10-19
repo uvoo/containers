@@ -4,10 +4,8 @@ echo "Starting certstrap-ssh."
 
 file="${APP_USERDIR}/.ssh/authorized_keys"
 if [[ -v AUTHORIZED_KEYS ]]; then
-    # sudo -u ${APP_USERNAME} mkdir -p ~/.ssh 
-    sudo -u app mkdir -p /home/app/.ssh 
-    # echo "${AUTHORIZED_KEYS}" | sudo -u ${APP_USERNAME} tee $file
-    echo "${AUTHORIZED_KEYS}" | sudo -u app tee $file
+    sudo -u ${APP_USERNAME} mkdir -p ${APP_USERDIR}/.ssh
+    echo "${AUTHORIZED_KEYS}" | sudo -u ${APP_USERNAME} tee $file
 fi
 
 if [[ -v USERPASSWORD ]]; then
