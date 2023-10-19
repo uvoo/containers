@@ -1,13 +1,13 @@
 FROM ubuntu:22.04
 
 ENV CERTSTRAP_VERSION=1.3.0
-ENV APP_USERNAME=app
+ENV ADMIN_USERNAME=certadmin
 
-ENV APPDIR=/${APP_USERNAME}
-# ENV APP_USERDIR=/${HOMEDIR}/${APP_USERNAME}
-# ENV APP_USERDIR=${APPDIR}/${APP_USERNAME}
-ENV APP_USERDIR=/home/${APP_USERNAME}
-WORKDIR ${APPDIR}
+ENV APP_DIR=/app
+# ENV ADMIN_DIR=/${HOMEDIR}/${ADMIN_USERNAME}
+# ENV ADMIN_DIR=${APP_DIR}/${ADMIN_USERNAME}
+ENV ADMIN_DIR=/home/${ADMIN_USERNAME}
+WORKDIR ${APP_DIR}
 
 # SET TIMEZONE
 ENV TZ=UTC
@@ -15,19 +15,19 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # ADD USER FOR SSH LOGIN
 # RUN useradd -ms /bin/bash
-RUN useradd -m -d ${APP_USERDIR} -s /bin/bash -u 1001 ${APP_USERNAME}
-# USER ${APP_USERNAME}
-# # RUN mkdir -p ${APP_USERDIR}/.ssh
+RUN useradd -m -d ${ADMIN_DIR} -s /bin/bash -u 1001 ${ADMIN_USERNAME}
+# USER ${ADMIN_USERNAME}
+# # RUN mkdir -p ${ADMIN_DIR}/.ssh
 # RUN mkdir -p ~/.ssh
 # RUN chmod 700 ~/.ssh
-# # RUN touch ${APP_USERDIR}/.ssh/authorized_keys
+# # RUN touch ${ADMIN_DIR}/.ssh/authorized_keys
 # RUN touch ~/.ssh/authorized_keys
 # RUN chmod 600 ~/.ssh/authorized_keys
 # USER root
 
-# RUN touch ${APP_USERDIR}/.ssh/authorized_keys
-# RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${APP_USERDIR}/.ssh
-# RUN chown ${APP_USERNAME}:${APP_USERNAME} ${APP_USERDIR}/.ssh
+# RUN touch ${ADMIN_DIR}/.ssh/authorized_keys
+# RUN chown -R ${ADMIN_USERNAME}:${ADMIN_USERNAME} ${ADMIN_DIR}/.ssh
+# RUN chown ${ADMIN_USERNAME}:${ADMIN_USERNAME} ${ADMIN_DIR}/.ssh
 
 COPY README.md .
 COPY examples .
@@ -35,8 +35,8 @@ COPY main.sh .
 RUN chmod +x main.sh
 COPY init-ca.sh .
 RUN chmod +x init-ca.sh
-RUN cp init-ca.sh $APP_USERDIR/
-RUN chown $APP_USERNAME $APP_USERDIR/init-ca.sh
+RUN cp init-ca.sh $ADMIN_DIR/
+RUN chown $ADMIN_USERNAME $ADMIN_DIR/init-ca.sh
 
 RUN set -eux && \
     apt-get -y update && \
@@ -83,4 +83,4 @@ EXPOSE 22
 # USER root
 # STOPSIGNAL SIGUSR1
 
-CMD ["bash", "-euc", "${APPDIR}/main.sh"]
+CMD ["bash", "-euc", "${APP_DIR}/main.sh"]
