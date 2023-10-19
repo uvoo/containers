@@ -35,7 +35,7 @@ ssh app@172.17.0.5
 
 For editing init-ca.sh the vim and nano editors are included.
 
-If you ls -lhat /app/ you can get different example sh templates to copy to your folder and run.
+If you ls -lhat /app/examples/ you can get different example sh templates to copy to your folder and run.
 
 
 ## Running init-ca.sh
