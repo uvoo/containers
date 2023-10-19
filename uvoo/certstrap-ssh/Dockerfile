@@ -30,10 +30,7 @@ RUN useradd -m -d ${APP_USERDIR} -s /bin/bash -u 1001 ${APP_USERNAME}
 # RUN chown ${APP_USERNAME}:${APP_USERNAME} ${APP_USERDIR}/.ssh
 
 COPY README.md .
-COPY example1.sh .
-COPY example2.sh .
-COPY example3.sh .
-COPY example-init-ca-nopass.sh .
+COPY examples .
 COPY main.sh .
 RUN chmod +x main.sh
 COPY init-ca.sh .
