@@ -30,7 +30,9 @@ RUN useradd -m -d ${ADMIN_DIR} -s /bin/bash -u 1001 ${ADMIN_USERNAME}
 # RUN chown ${ADMIN_USERNAME}:${ADMIN_USERNAME} ${ADMIN_DIR}/.ssh
 
 COPY README.md .
-COPY examples .
+COPY examples/ ./examples/
+COPY openssl-ca/init-openssl-ca.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/init-openssl-ca.sh
 COPY main.sh .
 RUN chmod +x main.sh
 COPY init-ca.sh .
