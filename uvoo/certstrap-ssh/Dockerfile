@@ -33,6 +33,7 @@ COPY README.md .
 COPY example1.sh .
 COPY example2.sh .
 COPY example3.sh .
+COPY example-init-ca-nopass.sh .
 COPY main.sh .
 RUN chmod +x main.sh
 COPY init-ca.sh .

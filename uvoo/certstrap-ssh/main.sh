@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 echo "Starting certstrap-ssh."
 
 file="${APP_USERDIR}/.ssh/authorized_keys"

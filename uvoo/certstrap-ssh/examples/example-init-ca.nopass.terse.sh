@@ -12,11 +12,11 @@ ICA2a - HTTPS applications.
 ICA3a - Host/BackEnd certificates for WINRM and other services.
 ICA4a - Client certificates for client applications.
 '
-certstrap init --common-name RootCA1 --exclude-path-length
+certstrap init --common-name RootCA1 --exclude-path-length --passphrase ""
 # certstrap init --passphrase "" --common-name RootCA1 --path-length 1 
-certstrap request-cert --common-name ICA1a 
+certstrap request-cert --common-name ICA1a --passphrase ""
 certstrap sign ICA1a --CA RootCA1 --intermediate
-certstrap request-cert --common-name ExampleCertificate
+certstrap request-cert --common-name ExampleCertificate --passphrase ""
 certstrap sign ExampleCertificate --CA ICA1a
 cat out/RootCA1.crt > out/ICA1a.chain
 cat out/ICA1a.crt >> out/ICA1a.chain
