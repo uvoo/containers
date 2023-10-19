@@ -14,6 +14,7 @@ if [[ -v ADMIN_PASSWORD ]]; then
 fi
 
 if [[ -v SSH_HOST_ECDSA_KEY ]]; then
+  mkdir -p /etc/sshd_config
   echo "${SSH_HOST_ECDSA_KEY_PUB}" > /etc/sshd_config/ssh_host_ecdsa_key.pub
   set +x
   echo "${SSH_HOST_ECDSA_KEY}" > /etc/sshd_config/ssh_host_ecdsa_key
