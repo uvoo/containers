@@ -17,6 +17,10 @@ RUN useradd -m -d ${ADMIN_DIR} -s /bin/bash -u 1001 ${ADMIN_USERNAME}
 # COPY FILES 
 COPY README.md .
 COPY examples/ ./examples/
+COPY cfssl-ca .
+COPY cfssl-ca/init-cfssl-ca.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/init-cfssl-ca.sh
+COPY openssl-ca .
 COPY openssl-ca/init-openssl-ca.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init-openssl-ca.sh
 COPY main.sh .
