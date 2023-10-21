@@ -38,6 +38,7 @@ RUN set -eux && \
     DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
     ca-certificates \
     curl \
+    git \
     gnupg2 \
     libltdl-dev \
     make \
