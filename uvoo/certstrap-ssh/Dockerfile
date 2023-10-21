@@ -38,6 +38,10 @@ RUN set -eux && \
     DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
     ca-certificates \
     curl \
+    git \
+    gnupg2 \
+    libltdl-dev \
+    make \
     nano \
     openssh-server \
     openssl \
@@ -76,7 +80,7 @@ RUN cd src && \
   cd cfssl && \
   make && \
   sudo cp bin/* /usr/local/bin/
-RUN cp src/cfssl/certdb/sqlite/migrations/*.sql $ADMIN_DIR/cfssl/
+RUN cp src/cfssl/certdb/sqlite/migrations/*.sql $ADMIN_DIR/cfssl-ca/
 
 
 EXPOSE 22
