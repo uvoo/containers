@@ -26,8 +26,8 @@ RUN chmod +x /usr/local/bin/init-cfssl-ca.sh
 COPY openssl-ca .
 COPY openssl-ca/init-openssl-ca.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init-openssl-ca.sh
-COPY main.sh .
-RUN chmod +x main.sh
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 COPY init-ca.sh .
 RUN chmod +x init-ca.sh
 RUN cp init-ca.sh $ADMIN_DIR/
