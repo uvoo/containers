@@ -79,7 +79,7 @@ RUN cd src && \
   cd cfssl && \
   make && \
   sudo cp bin/* /usr/local/bin/
-RUN cp src/cfssl/certdb/sqlite/migrations/*.sql $ADMIN_DIR/cfssl/
+RUN cp src/cfssl/certdb/sqlite/migrations/*.sql $ADMIN_DIR/cfssl-ca/
 
 
 EXPOSE 22
