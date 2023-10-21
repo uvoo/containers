@@ -1,6 +1,6 @@
 #!/bin/bash
 set -eu
-echo "Starting certstrap-ssh."
+echo "Starting certstrap-ssh."k -n cert
 
 file="${ADMIN_DIR}/.ssh/authorized_keys"
 if [[ -v AUTHORIZED_KEYS ]]; then
@@ -16,7 +16,7 @@ fi
 
 if [[ -v SSH_HOST_ECDSA_KEY ]]; then
   echo "Adding sshd host keys."
-  # mkdir -p /etc/sshd_config
+  mkdir -p /etc/sshd_config
   set +x
   echo "${SSH_HOST_ECDSA_KEY_PUB}" > /etc/sshd_config/ssh_host_ecdsa_key.pub
   echo "${SSH_HOST_ECDSA_KEY}" > /etc/sshd_config/ssh_host_ecdsa_key
