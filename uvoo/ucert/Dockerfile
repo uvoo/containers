@@ -88,4 +88,4 @@ EXPOSE 22
 # USER root
 # STOPSIGNAL SIGUSR1
 
-CMD ["bash", "-euc", "${APP_DIR}/main.sh"]
+CMD ["bash", "-euc", "${APP_DIR}/entrypoint.sh"]
