@@ -3,7 +3,7 @@
 # 6.0.9-alpine
 # FROM zabbix/zabbix-agent2:6.0-alpine-latest 
 # FROM zabbix/zabbix-agent2:6.0.9-alpine
-FROM zabbix/zabbix-agent2:6.0.18-ubuntu
+FROM zabbix/zabbix-agent2:6.0.23-ubuntu
 USER root
 
 RUN set -eux && \
