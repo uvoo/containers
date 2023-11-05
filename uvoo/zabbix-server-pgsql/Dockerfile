@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM zabbix/zabbix-server-pgsql:6.0.18-ubuntu
+FROM zabbix/zabbix-server-pgsql:6.0.23-ubuntu
 USER root
 
 ADD ./alertscripts /usr/lib/zabbix/alertscripts
