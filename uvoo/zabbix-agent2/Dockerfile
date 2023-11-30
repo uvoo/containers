@@ -4,6 +4,7 @@
 # FROM zabbix/zabbix-agent2:6.0-alpine-latest 
 # FROM zabbix/zabbix-agent2:6.0.9-alpine
 FROM zabbix/zabbix-agent2:6.0.23-ubuntu
+SHELL ["/bin/bash", "-c"]
 USER root
 ARG INTERNAL_ROOTCA_CRTS_URL
 
