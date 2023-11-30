@@ -5,6 +5,7 @@
 # FROM zabbix/zabbix-agent2:6.0.9-alpine
 FROM zabbix/zabbix-agent2:6.0.23-ubuntu
 USER root
+ARG INTERNAL_ROOTCA_CRTS_URL
 
 RUN set -eux && \
     apt-get -y update && \
@@ -22,8 +23,7 @@ RUN set -eux && \
     ca-certificates
     # gcc \
 
-ADD internal_ca_root.crt /usr/local/share/ca-certificates/internal_ca_root.crt
-RUN chmod 644 /usr/local/share/ca-certificates/internal_ca_root.crt && update-ca-certificates
+RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; update-ca-certificates; fi
 
 ADD ./postgresql/postgresql /var/lib/zabbix/postgresql
 ADD ./postgresql/template_db_postgresql.conf /etc/zabbix/zabbix_agent2.d/
