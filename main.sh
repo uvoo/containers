@@ -55,10 +55,10 @@ docker_build_push(){
   IMAGE=$REGISTRY/$REPO
   docker_create_repo $REPO
   # nocache="--no-cache"
-  nocache=""
+  # nocache=""
   # docker build $nocache --tag $REPO:latest --tag $REPO:$RELEASE --tag "$ORG/$NAME:$RELEASE-$OS" .
   # docker build --build-arg arg=2.3 .
-  docker build $nocache --tag $REPO:latest --tag "$REPO:$TAG" .
+  docker build ${BUILD_ARGS} ${NOCACHE} --tag $REPO:latest --tag "$REPO:$TAG" .
   echo Push to docker repo in 10 seconds; sleep 10
   echo ${DOCKERHUB_PASSWORD} | docker login -u $DOCKERHUB_USERNAME --password-stdin
   # docker login -u $DOCKERHUB_USERNAME -p ${DOCKERHUB_PASSWORD}  # this is deprecated
@@ -164,6 +164,8 @@ main(){
       echo "$git_diff"
       echo "Building repo $repo version $version & pushing to container registry."
     #   container_build_push "${repo}" "${version}"
+      BUILD_ARGS=""
+      NOCACHE=""
       if [ -f .env ]; then
         . .env
       fi

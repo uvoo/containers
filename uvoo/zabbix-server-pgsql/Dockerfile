@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM zabbix/zabbix-server-pgsql:6.0.23-ubuntu
 USER root
+ARG INTERNAL_ROOTCA_CRTS_URL
 
 ADD ./alertscripts /usr/lib/zabbix/alertscripts
 ADD ./externalscripts /usr/lib/zabbix/externalscripts
@@ -30,6 +31,8 @@ RUN set -eux && \
     gnupg2 \
     gcc \
     ca-certificates
+
+RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}' ; fi
 
 RUN curl -SL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
 RUN curl -SL https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
