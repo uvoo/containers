@@ -29,11 +29,12 @@ RUN set -eux && \
     libffi-dev \
     libgit2-dev \
     python3-dev \
+    sudo \
     gnupg2 \
     gcc \
     ca-certificates
 
-RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; update-ca-certificates; fi
+RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | sudo awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; sudo update-ca-certificates; fi
 
 RUN curl -SL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
 RUN curl -SL https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list

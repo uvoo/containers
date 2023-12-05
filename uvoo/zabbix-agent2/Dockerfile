@@ -20,11 +20,12 @@ RUN set -eux && \
     libffi-dev \
     libgit2-dev \
     python3-dev \
+    sudo \
     gnupg2 \
     ca-certificates
     # gcc \
 
-RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; update-ca-certificates; fi
+RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | sudo awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; sudo update-ca-certificates; fi
 
 ADD ./postgresql/postgresql /var/lib/zabbix/postgresql
 ADD ./postgresql/template_db_postgresql.conf /etc/zabbix/zabbix_agent2.d/
