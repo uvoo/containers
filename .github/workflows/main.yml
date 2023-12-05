@@ -1,11 +1,11 @@
-name: Build/push nginx-alpine with ntml+ support
+name: Build/push uvoo docker containers
 
 on:
   push:
     branches: main
 
 jobs:
-  build-push-nginx-docker:
+  build-push-docker-uvoo-containers:
     runs-on: [ubuntu-20.04]
     # env:
       # ENV_NAME: 'main'
