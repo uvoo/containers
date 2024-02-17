@@ -1,0 +1,21 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: timescaledb-example
+spec:
+  instances: 1
+  primaryUpdateStrategy: unsupervised
+  imageName: uvoo/postgres-timescaledb:16.2
+  bootstrap:
+    initdb:
+      postInitTemplateSQL:
+        - CREATE EXTENSION timescaledb;
+
+  postgresql:
+    shared_preload_libraries:
+      - timescaledb
+    parameters:
+      shared_buffers: 256MB
+
+  storage:
+    size: 2Gi
