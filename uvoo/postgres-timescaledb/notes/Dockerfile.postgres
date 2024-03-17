@@ -1,6 +1,4 @@
-# FROM postgres:16-bookworm
-FROM ghcr.io/cloudnative-pg/postgresql:16.0
-USER root
+FROM postgres:16-bookworm
 ENV PGSQL_HTTP_VERSION=1.6.0
 RUN set -eux && \
     apt-get -y update && \
@@ -16,18 +14,7 @@ RUN set -eux && \
     git \
     make \
     g++ \
-    llvm-13-linker-tools \
-    clang \
-    clang-tools \
-    llvm \
     gcc
-    # clang-11 \
-    # build-essential \
-    # /usr/lib/llvm-11/bin/llvm-lto
-    # build-essential \
-# sudo apt-get install llvm
-# sudo apt-get install clang
-# sudo apt-get install clang-tools
 
 # pgsql-http
 RUN mkdir -p src
