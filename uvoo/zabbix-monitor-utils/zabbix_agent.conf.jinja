@@ -1,0 +1,55 @@
+{% if version == '2' %}
+  {% set version = '2' %}
+{% elif version == 'd' %}
+  {% set version = 'd' %}
+{% else %}
+  {% set version = '2' %}
+{% endif %}
+
+{% if os == 'windows' %}
+
+Server={{ ZABBIX_AGENT_SERVER }}
+ServerActive={{ ZABBIX_AGENT_SERVERACTIVE }}
+Hostname={{hostname}}
+ControlSocket=\\.\pipe\agent.sock
+TLSConnect=psk
+TLSAccept=psk
+TLSPSKIdentity={{ AUTOREGISTRATION_TLSPSKIDENTITY }}
+TLSPSKFile=C:\Program Files\Zabbix Agent 2\psk.key
+HostInterfaceItem = {{ hostInterfaceItem }}
+LogFile=C:\Program Files\Zabbix Agent 2\zabbix_agent2.log
+hostmetadataitem=system.uname
+DenyKey=system.run[*]
+AllowKey=system.run[get-service]
+AllowKey=system.run[hostname]
+
+
+{% elif os == 'linux' %}
+
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=0
+ListenPort=10050
+HostMetadataItem=system.uname
+Include=/etc/zabbix/zabbix_agent2.d/*.conf
+ControlSocket=/tmp/agent.sock
+
+Server={{ ZABBIX_AGENT_SERVER }}
+ServerActive={{ ZABBIX_AGENT_SERVERACTIVE }}
+Hostname={{ hostname }}
+HostInterfaceItem = {{ hostInterfaceItem }}
+
+TLSConnect=psk
+TLSAccept=psk
+TLSPSKIdentity={{ AUTOREGISTRATION_TLSPSKIDENTITY }}
+TLSPSKFile=/etc/zabbix/psk.key
+
+DenyKey=system.run[*]
+AllowKey=system.run[get-service]
+AllowKey=system.run[hostname]
+
+{% else %}
+
+Unsupported OS
+
+{% endif %}

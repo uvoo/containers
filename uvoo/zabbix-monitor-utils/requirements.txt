@@ -1,0 +1,8 @@
+flask
+# gunicorn
+pip
+pyopenssl
+pyyaml
+pyzabbix
+wheel
+waitress

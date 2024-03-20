@@ -1,0 +1,83 @@
+{% if os == 'Windows' %}
+
+HostnameItem=system.hostname[host]
+HostInterfaceItem=zbx.getIpaddr
+Server={{ ZABBIX_AGENT_SERVER }}
+ServerActive={{ ZABBIX_AGENT_SERVERACTIVE }}
+ControlSocket=\\.\pipe\agent.sock
+TLSPSKIdentity={{ AUTOREG_TLSPSKIDENTITY }}
+TLSConnect=psk
+TLSAccept=psk
+TLSPSKFile=C:\app\zabbix\psk.key
+LogFile=C:\app\zabbix\zabbix_agent2.log
+HostMetadata={{ HostMetadata }}
+# HostMetadataItem=system.uname
+
+UserParameter=check.url.http_code[*],powershell.exe -NonInteractive -NoProfile -Command "try { (Invoke-WebRequest $1 -UseBasicParsing).StatusCode } catch { $_.Exception.Response.StatusCode.Value__}"
+UserParameter=check.url.time_total[*],powershell.exe -NonInteractive -NoProfile -Command "$url='$1'; (Measure-Command -Expression { $site = Invoke-WebRequest -Uri $url -UseBasicParsing }).Milliseconds"
+UserParameter=zbx.getDns,powershell.exe -NonInteractive -NoProfile -Command "(hostname).ToLower()+\".{{ DOMAIN }}\""
+UserParameter=zbx.getIpaddr,powershell.exe -NonInteractive -NoProfile -Command '(Get-NetIPAddress -AddressFamily ipv4 | Where-Object {$_.InterfaceAlias -eq ((Get-NetAdapter -Physical | Get-NetAdapterStatistics | Sort-Object -Property SentBytes)[-1]).Name }).IPAddress'
+UserParameter=zbx.getPublicIpaddr,powershell.exe -NonInteractive -NoProfile -Command "(Invoke-WebRequest -uri "http://api.ipify.org" -UseBasicParsing).Content"
+UserParameter=zbx.getZabbixAgentVersion,powershell.exe -NonInteractive -NoProfile -Command "/app/zabbix/zabbix_agent2.exe --version | Select -first 1"
+UserParameter=zbx.getFileHash, powershell.exe -NonInteractive -NoProfile -Command "Get-ChildItem $1 -Recurse -File -Force -ea SilentlyContinue -ev errs | Get-FileHash -Algorithm SHA1"
+
+# Remote Commands
+AllowKey={{ AllowKey }}
+
+# Examples
+# AllowKey=system.run[*]
+# DenyKey=system.run[*]
+# AllowKey=system.run[get-service]
+# AllowKey=system.run[hostname]
+# UserParameter=zbx.getDns,powershell.exe -NonInteractive -NoProfile -ExecutionPolicy bypass -File "C:\app\zabbix\scripts\getDNS.ps1"
+# HostInterface=myhost.example.com
+# HostInterface=10.x.x.x
+
+
+{% elif os == 'Linux' %}
+
+HostnameItem=system.hostname
+HostInterfaceItem=zbx.getIpaddr
+# HostInterfaceItem=zbx.getDns
+Server={{ ZABBIX_AGENT_SERVER }}
+ServerActive={{ ZABBIX_AGENT_SERVERACTIVE }}
+ControlSocket=/tmp/agent.sock
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=0
+ListenPort=10050
+HostMetadata={{ HostMetadata }}
+HostMetadataItem=zbx.getHostMetadata
+Include=/etc/zabbix/zabbix_agent2.d/*.conf
+
+TLSConnect=psk
+TLSAccept=psk
+TLSPSKIdentity={{ AUTOREG_TLSPSKIDENTITY }}
+TLSPSKFile=/etc/zabbix/psk.key
+
+UserParameter=check.url.http_code[*],curl -s -o /dev/null -w '%{http_code}' $1
+UserParameter=check.url.time_total[*],curl -s -o /dev/null -w '%{time_total}' $1
+UserParameter=zbx.getDns, bash -c "hostname | awk '{print tolower($0)".{{ DOMAIN }}"}'" 
+UserParameter=zbx.getIpaddr, bash -c "ip route get 8.8.8.8 | awk -F\"src \" 'NR==1{split(\$2,a,\" \");print a[1]}'"  # https://stackoverflow.com/questions/21336126/linux-bash-script-to-extract-ip-address
+UserParameter=zbx.getPublicIpaddr, bash -c "curl -s https://api.ipify.org"
+UserParameter=zbx.getZabbixAgentVersion, bash -c "/usr/sbin/zabbix_agent2 --version | head -n 1"
+UserParameter=zbx.getHostMetadata, bash -c "env={{ env }}; docker=no; app="{{ app }}"; group={{ group }}; hostname=$(hostname); os=$(uname); echo ":os=$os:hostname=$hostname:env=$env:app=$app:docker=$docker:primaryAdminGroup=$group"
+UserParameter=zbx.getFileSha1, bash -c "find /tmp/tmp -type f -print0  | xargs -0 sha1sum"
+
+# Remote Commands
+AllowKey={{ AllowKey }}
+
+# Examples
+# AllowKey=system.run[*]
+# DenyKey=system.run[*]
+# AllowKey=system.run[get-service]
+# AllowKey=system.run[hostname]
+# UserParameter=zbx.getDns,bash "/etc/zabbix/scripts/getDNS.ps1"
+# HostInterface=myhost.example.com
+# HostInterface=10.x.x.x
+
+{% else %}
+
+Unsupported OS
+
+{% endif %}
