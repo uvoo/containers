@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# Installs host agents and registers with appropriate service server
+set -e  # Use -ex for debugging
+. /etc/os-release
+# releasever=$(echo ${VERSION_ID} | awk -F. '{print $1}')  # Used for Redhat
+
+
+# hostname=$(hostname)
+# host_fqdn=$(hostname -f)
+hostname={{hostname}}
+host_fqdn={{dns}}
+
+# SumoLogic Vars
+accessid=XXXXX
+accesskey=XXXX
+
+# # Salt vars
+# minion_id_prefix="$1"
+# minion_id="$(hostname -s).$minion_id_prefix"
+# # minion_version="2018.3"  # 2018.3, 2019.2, latest
+# minion_version="latest"  # 2018.3, 2019.2, latest
+
+# Zabbix vars
+host_metadata_item="system.uname"
+zabbix_version="6.0"
+zabbix_release="1"
+zabbix_agent_config_file="/etc/zabbix/zabbix_agent2.conf"
+tlspskidentity={{tlspskidentity}}
+tlspskfile={{tlspskfile}}
+tlspskvalue={{tlspskvalue}}
+tmpdir=$(mktemp -d -t agents-install-XXXXXXXXXX)
+svcname=$svcname
+
+
+# Setup vars depending on Operating System
+if [[ "${ID}" =~ ^(rhel|centos)$ ]]; then
+  os_base=redhat
+  pkg_app=yum
+  pkg_ext=rpm
+  zabbix_pkg_filename="zabbix-release-${zabbix_version}-${zabbix_release}.el${VERSION_ID}.noarch.rpm"
+  # curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/${ID}/pool/main/z/zabbix-release/${pkg_filename}"
+  sumo_download_url="https://collectors.au.sumologic.com/rest/download/rpm/64"
+  VERSION_ID=$(echo ${VERSION_ID} | awk -F. '{print $1}')  # Used for Redhat/Centos 7 and older
+  sudo ${pkg_app} install -y curl
+elif [[ "${ID}" =~ ^(ubuntu|debian)$ ]]; then
+  PidFile=/run/zabbix/zabbix_agent2.pid
+  LogFile=/var/log/zabbix/zabbix_agent2.log
+  if [ $VERSION_ID == "16.04" ]; then
+    zabbix_agent_config_file="/etc/zabbix/zabbix_agentd.conf"
+    svcname=zabbix-agent
+    PidFile=/var/run/zabbix/zabbix_agentd.pid
+    LogFile=/var/log/zabbix/zabbix_agentd.log
+  fi
+  os_base=debian
+  pkg_app=apt
+  pkg_ext=deb
+  sumo_download_url="https://collectors.au.sumologic.com/rest/download/deb/64"
+  sudo ${pkg_app} update -y
+  sudo ${pkg_app} install -y curl
+  zabbix_pkg_filename="zabbix-release_${zabbix_version}-${zabbix_release}%2Bubuntu${VERSION_ID}_all.deb"
+  # curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/rhel/${VERSION_ID}/x86_64/${zabbix_pkg_filename}"
+else
+  echo "OS ${ID} ${VERSION_ID} is not supported."
+fi
+
+
+function clean_up() {
+  rm -rf "${tmpdir}"
+}
+
+
+ubuntu_additional_prep() {
+  my_ip=$(ip route get 8.8.8.8 | awk '/8.8.8.8/ {print $NF}')
+  vmname=$(hostname)
+  sudo sed -i.bak "2i$my_ip $vmname" /etc/hosts
+  sudo apt-get -y install virt-what
+}
+
+
+function zabbix_install() {
+  if [[ "${ID}" =~ ^(rhel|centos)$ ]]; then
+    zabbix_redhat_based_install
+  elif [[ "${ID}" =~ ^(ubuntu|debian)$ ]]; then
+    zabbix_debian_based_install
+  else
+    echo "OS ${ID} ${VERSION_ID} is not supported."
+    return 1
+  fi
+  # sudo systemctl restart $svcname
+  sudo systemctl enable $svcname
+  # sleep 10
+  update_zabbix_config
+}
+
+
+function zabbix_debian_based_install() {
+  rm -f "${zabbix_pkg_filename}" || true
+  curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/${ID}/pool/main/z/zabbix-release/${zabbix_pkg_filename}"
+  sudo apt purge -y zabbix-release || true
+  sudo apt remove -y --purge $svcname || true
+  sudo dpkg -i ${zabbix_pkg_filename}
+  sudo ${pkg_app} update
+  sudo ${pkg_app} install -y $svcname
+}
+
+
+function zabbix_redhat_based_install() {
+  rm -f "${zabbix_pkg_filename}" || true
+  curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/rhel/${VERSION_ID}/x86_64/${pkg_filename}"
+  sudo yum remove -y $svcname
+  sudo yum install -y ./${pkg_filename} || true
+  sudo yum install -y $svcname
+}
+
+
+function update_zabbix_config() {
+	# sudo bash -c "cat <<- EOF > $zabbix_agent_config_file   
+	# cat <<- EOF > $zabbix_agent_config_file   
+	cat <<- EOF | sudo tee "${zabbix_agent_config_file}"
+	PidFile=${PidFile}
+	LogFile=${LogFile}
+	LogFileSize=0
+	ServerActive={{ ZABBIX_AGENT_SERVERACTIVE }}
+	ListenPort=10050
+	Server={{ ZABBIX_AGENT_SERVER }}
+        Include=/etc/zabbix/zabbix_agent2.d/*.conf
+	HostMetadataItem=system.uname
+	Hostname=${hostname}
+	TLSConnect=psk
+	TLSAccept=psk
+	TLSPSKIdentity=${tlspskidentity}
+	TLSPSKFile=${tlspskfile}
+	EOF
+    # echo $tlspskvalue | sudo tee $tlspskfile
+    echo $tlspskvalue | sudo tee $tlspskfile
+    sudo chown zabbix:zabbix $tlspskfile $zabbix_agent_config_file
+    sudo chmod 0400 $zabbix_agent_config_file $tlspskfile
+    sleep 5
+    sudo systemctl restart $svcname
+    sleep 5
+    systemctl is-active $svcname >/dev/null 2>&1 && echo "I: service is running" || echo "E: service is not running" 
+    # if [[ $(sudo systemctl is-active sshd) ]]
+}
+
+
+function main() {
+  cd "${tmpdir}"
+  if [[ ${os_base} == "redhat" ]]; then
+    echo "Redhat"
+  elif [[ ${os_base} == "debian" ]]; then
+    echo "Debian"
+  else
+    echo "OS ${ID} ${VERSION_ID} is not supported."
+    clean_up
+    exit 1
+  fi
+  zabbix_install
+  # salt_install
+  # tanium_install
+  # amp_install
+  clean_up
+}
+
+main
+
+
+# Notes
+# You can use bootrapper instead of repos but we will use repos
+# https://github.com/saltstack/salt-bootstrap/blob/develop/bootstrap-salt.sh
+# curl -L https://bootstrap.saltstack.com -o install_salt.sh
+# sudo sh install_salt.sh -P -M

@@ -1,0 +1,113 @@
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  write-host "Installer must be ran as admin."
+  exit 1
+}
+$ErrorActionPreference = "Stop"
+if($token){
+  $token = Read-Host "Enter token"
+}
+$agent = "zabbix_agent2"
+$major = 5
+$minor = 4 
+$patch = 2 
+$release = "$major.$minor.$patch"
+$release_minor = "$major.$minor"
+
+$hostname = "{{hostname}}"
+$tlspskidentity = "{{tlspskidentity}}"
+$tlspskvalue = "{{tlspskvalue}}"
+$global:tlspskidentity = $tlspskidentity
+$global:tlspskvalue = $tlspskvalue
+# $global:hostname=((hostname).tolower())
+$global:hostname=([System.Net.Dns]::GetHostByName($env:computerName).HostName.tolower())
+# $global:hostname = $hostname
+
+# $global:msi_url = "https://cdn.zabbix.com/zabbix/binaries/stable/$release_minor/$release/$agent-$release-windows-amd64-openssl.msi"
+# $global:msi_url = "{{ ZABBIX_URL }}/monitor-registration/downloads/zabbix_agent2-5.4.4-windows-amd64-openssl.msi"
+$global:msi_url = "{{ ZABBIX_URL }}/monitor-registration/downloads/zabbix_agent2-windows.msi"
+$global:msi_file_sha256 = "357e6db349cf419950501d0098e18ec57dc8d7ae669e3a7e12f344d04e50cec6"
+$global:agent_conf = "C:\Program Files\Zabbix Agent 2\zabbix_agent2.conf"
+$global:agent_exe = "C:\Program Files\Zabbix Agent 2\zabbix_agent2.exe"
+$global:install_dir = "C:\Program Files\Zabbix Agent 2"
+write-host "$global:hostname Zabbix Agent install beginning ..."
+$TempDir = [System.IO.Path]::GetTempPath()
+# New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
+# $global:msi_file = "C:\tmp\zabbix_agent.msi"
+$global:msi_file = "$TempDir\zabbix_agent.msi"
+
+
+
+
+function download_msi() {
+  Write-Host "Downloading and installing $global:msi_url"
+  # if(Test-Path -Path $global:msi_file -PathType Leaf){
+  #     write-host "$global:msi_file already exists. Using existing for install."
+  #    return
+    # Causes issues for some reason maybe not exist in path?
+    # if((get-filehash $global:msi_file).hash -eq $global:msi_file_sha256 ){
+    # }
+  # }
+  [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Tls12'
+  Invoke-WebRequest $global:msi_url -outfile "$global:msi_file"
+}
+
+
+
+function install_app(){
+# $hostname = (hostname).ToLower()
+$hostname = (hostname)
+$filepath = Resolve-Path $global:msi_file
+$serveractive = "{{ ZABBIX_AGENT_SERVERACTIVE }}"
+$server = "{{ ZABBIX_AGENT_SERVER }}"
+msiexec /i $filepath /quiet /norestart "SERVER=$server" "SERVERACTIVE=$serveractive" "HOSTNAME=$hostname" "TLSCONNECT=psk" "TLSACCEPT=psk" "TLSPSKIDENTITY=$tlspskidentity" "TLSPSKVALUE=$tlspskvalue" "SKIP=fw" | Out-Null
+Start-Sleep -Seconds 10 
+sc.exe failure "zabbix agent 2" reset=3600 actions= restart/30000
+$LASTEXITCODE
+  if(Test-Path -Path $global:agent_conf -PathType Leaf){
+    (Get-Content $global:agent_conf).replace("# HostMetadataItem.*", "HostMetadataItem=system.uname") | set-content $global:agent_conf
+    (Get-Content $global:agent_conf).replace("HostMetadataItem.*", "HostMetadataItem=system.uname") | set-content $global:agent_conf
+    restart-service "zabbix agent 2"
+  }
+# 0
+}
+
+function uninstall_choco_zabbix(){
+  try {
+    choco uninstall -y zabbix-agent.install | Out-Null
+    choco uninstall -y zabbix-agent | Out-Null
+  } catch {
+  } 
+
+}
+
+function uninstall_app([string]$search){
+  # $search = 'zabbix'
+  $64bitnode = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+  $32bitnode = 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  $Uninstaller = Get-ChildItem -Path $64bitnode,$32bitnode  | Get-ItemProperty | Where-Object {$_.DisplayName -match $search }
+  $Uninstaller | Select-Object -Property DisplayName, UninstallString | Out-Null
+  $Uninstaller | ForEach { Start-Process -FilePath MsiExec.exe -ArgumentList "/X$($PSItem.PSChildName) /Q" -Wait | Out-Null }
+  # rm -r "C:\Program Files\Zabbix Agent 2"
+}
+
+
+function cleanup(){
+  Remove-Item -Recurse -Force $global:tmpdir
+}
+
+function testAgent2(){
+$ErrorActionPreference = "Stop"
+& "C:\Program Files\Zabbix Agent 2\zabbix_agent2.exe" -V
+& "C:\Program Files\Zabbix Agent 2\zabbix_agent2.exe" -t vm.memory.size[available] -c "C:\Program Files\Zabbix Agent 2\zabbix_agent2.conf"
+}
+
+
+function main(){
+  uninstall_app zabbix
+  uninstall_choco_zabbix
+  download_msi
+  install_app
+  testAgent2
+}
+
+main

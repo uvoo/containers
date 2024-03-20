@@ -1,0 +1,230 @@
+{% if os == 'Windows' and shell == 'pwsh' %}
+#Requires -RunAsAdministrator
+$ErrorActionPreference = "Stop"
+$dir="C:\app\zabbix"
+# Get-Location
+$svcName="Zabbix Agent 2"
+function getZabbixService(){
+  $service = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+  if ($service -ne $null) {
+    $msg="$svcName service exists."
+    Write-Output $msg
+    # return $true
+    return $true
+  } else {
+    $msg="$svcName service does not exist"
+    Write-Output $msg
+    return $false
+  }
+}
+
+function installZabbix(){
+  $proxyToken="{{ PROXYTOKEN }}"
+  $HostMetadata="{{ HostMetadata }}"
+  $AllowKey="{{ AllowKey }}"
+  if(!(Test-Path -Path $dir )){
+    New-Item -ItemType "directory" -Path "$dir" 
+  }
+  cd $dir
+  Write-Output "Downloading Zabbix Files"
+  [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Tls,Tls11,Tls12'
+  Invoke-WebRequest "{{ ZABBIX_URL }}/monitor-utils/downloads/zabbix_agent2.exe?proxyToken=$proxyToken" -outfile zabbix_agent2.exe
+  Invoke-WebRequest "{{ ZABBIX_URL }}/monitor-utils/get/autoregistration/psk.key?proxyToken=$proxyToken" -outfile psk.key
+  Invoke-WebRequest "{{ ZABBIX_URL }}/monitor-utils/get/autoregistration/zabbix_agent2.conf?proxyToken=$proxyToken&HostMetadata=$HostMetadata&AllowKey=$AllowKey" -outfile zabbix_agent2.win.conf
+  .\zabbix_agent2.exe --install --config zabbix_agent2.win.conf
+  # zabbix_agent2.win.conf
+  try{
+  sc.exe failure "zabbix agent 2" reset=3600 actions= restart/30000
+  }catch{"E: sc.exe failed."}
+  Start-Service "Zabbix Agent 2"
+  Start-Sleep 5
+  Get-Content .\zabbix_agent2.log | Select -last 10  # -wait
+  Get-Service -Name $svcName
+  .\zabbix_agent2.exe -t vm.memory.size[available]
+}
+
+function uninstallZabbix(){
+  try{
+    cd $dir
+    Stop-Service "$svcName"
+    .\zabbix_agent2.exe --uninstall
+    # Stop-Service "$svcName"  -ErrorAction SilentlyContinue
+    # sc.exe stop/delete "$svcName"
+    # C:\app\zabbix\zabbix_agent2.exe --uninstall
+    # .\zabbix_agent2.exe --uninstall --config zabbix_agent2.win.conf
+  }catch{}
+}
+
+if ($uninstall -eq $true) {
+  Write-Output "Uninstalling $svcName if exists"
+  uninstallZabbix
+}
+
+uninstallZabbix
+$r=(getZabbixService)
+if($r -eq $true){
+  Write-Host "E: $svcName service exits. Please uninstall first."
+  Write-Host "sc stop `"zabbix agent 2`"; zabbix_agent2.exe --uninstall"
+  exit 1
+}
+installZabbix
+
+
+{% elif os == 'Linux' and shell == 'bash' %}
+#!/usr/bin/env bash
+# Installs host agents and registers with appropriate service server
+set -ex  # Use -ex for debugging
+. /etc/os-release
+# . /etc/lsb-release
+# releasever=$(echo ${VERSION_ID} | awk -F. '{print $1}')  # Used for Redhat
+
+
+zabbix_version="6.0"
+zabbix_release="4"
+zabbix_agent_config_file="/etc/zabbix/zabbix_agent2.conf"
+tmpdir=$(mktemp -d -t agents-install-XXXXXXXXXX)
+
+
+
+# Setup vars depending on Operating System
+if [[ "${ID}" =~ ^(rhel|centos)$ ]]; then
+  os_base=redhat
+  pkg_app=yum
+  pkg_ext=rpm
+  arrIN=(${VERSION_ID//./ })
+  VERSION_ID=${arrIN[0]}
+  zabbix_pkg_filename="zabbix-release-${zabbix_version}-${zabbix_release}.el${VERSION_ID}.noarch.rpm"
+  VERSION_ID=$(echo ${VERSION_ID} | awk -F. '{print $1}')  # Used for Redhat/Centos 7 and older
+  sudo ${pkg_app} install -y curl
+  curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/rhel/${VERSION_ID}/x86_64/${zabbix_pkg_filename}"
+elif [[ "${ID}" =~ ^(ubuntu|debian)$ ]]; then
+  os_base=debian
+  pkg_app=apt
+  pkg_ext=deb
+  sudo ${pkg_app} update -y
+  sudo ${pkg_app} install -y curl
+  zabbix_pkg_filename="zabbix-release_${zabbix_version}-${zabbix_release}%2B${ID}${VERSION_ID}_all.deb"
+  echo "https://repo.zabbix.com/zabbix/${zabbix_version}/${ID}/pool/main/z/zabbix-release/${zabbix_pkg_filename}"
+  curl -LO "https://repo.zabbix.com/zabbix/${zabbix_version}/${ID}/pool/main/z/zabbix-release/${zabbix_pkg_filename}"
+else
+  echo "OS ${ID} ${VERSION_ID} is not supported."
+fi
+
+
+function clean_up() {
+  rm -rf "${tmpdir}"
+}
+
+
+function rhel_repo_add_eh() {
+  # This adds custom example rhel repo for bootstraping before registeration/licensing
+  VERSION_ID=$(echo ${VERSION_ID} | awk -F. '{print $1}')  # Used for Redhat/Centos 7 and older
+  if [[ "${ID}" =~ ^(rhel)$ ]]; then
+    curl -O "https://repo.example.com/${ID}/${VERSION_ID}/os/RPM-GPG-KEY-redhat-release" && rpm --import RPM-GPG-KEY-redhat-release
+    echo "[customos]
+name=Custom ${VERSION_ID} - OS
+baseurl=https://repo.example.com/rhel/${VERSION_ID}/os/
+enabled=1
+gpgcheck=1" | sudo tee /etc/yum.repos.d/eh.repo
+  fi
+}
+
+
+ubuntu_additional_prep() {
+  # This was being used in past. Not sure if this is needed or not but we'll include.
+  # ipddr=$(ip -o -4 addr | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\\.){3}[0-9]*).*/\\2/p')
+  my_ip=$(ip route get 8.8.8.8 | awk '/8.8.8.8/ {print $NF}')
+  vmname=$(hostname)
+  sudo sed -i.bak "2i$my_ip $vmname" /etc/hosts
+  sudo apt-get -y install virt-what
+  if [ "$(echo "^$minion_id" | grep -c "legacy")" -ge 1 ]; then
+    echo -e 'grains:\n  roles:\n    - legacy\n' | sudo tee /etc/salt/minion.d/grains.conf > /dev/null
+  fi
+}
+
+
+uninstallZabbix(){
+  # sudo apt remove -y --purge zabbix-agent2 || true
+  echo "Uninstalling zabbix-agent2 and release packages."
+  sudo $pkg_app remove -y zabbix-agent2 zabbix-release || true
+  echo "Uninstall complete."
+}
+
+function zabbix_install() {
+  if [[ "${ID}" =~ ^(rhel|centos)$ ]]; then
+    zabbix_redhat_based_install
+  elif [[ "${ID}" =~ ^(ubuntu|debian)$ ]]; then
+    zabbix_debian_based_install
+  else
+    echo "OS ${ID} ${VERSION_ID} is not supported."
+    return 1
+  fi
+  sudo systemctl restart zabbix-agent2
+  sudo systemctl enable zabbix-agent2
+}
+
+
+function zabbix_debian_based_install() {
+  rm -f "${zabbix_pkg_filename}" || true
+  curl -LO "https://repo.zabbix.com/zabbix/${zabbix_version}/${ID}/pool/main/z/zabbix-release/${zabbix_pkg_filename}"
+  sudo dpkg -i $tmpdir/${zabbix_pkg_filename}
+  sudo ${pkg_app} update
+  sudo ${pkg_app} install -y zabbix-agent2
+}
+
+
+function zabbix_redhat_based_install() {
+  rm -f "${zabbix_pkg_filename}" || true
+  curl -O "https://repo.zabbix.com/zabbix/${zabbix_version}/rhel/${VERSION_ID}/x86_64/${zabbix_pkg_filename}"
+  sudo yum remove -y zabbix-agent2
+  sudo yum clean all
+  sudo yum install -y ./${zabbix_pkg_filename} || true
+  sudo yum install -y zabbix-agent2
+}
+
+
+function updateZabbixFiles(){
+  proxyToken="{{ PROXYTOKEN }}"
+  sudo cp /etc/zabbix/zabbix_agent2.conf /etc/zabbix/zabbix_agent2.conf.bkp
+  sudo cp /etc/zabbix/zabbix_agent2.conf /etc/zabbix/psk.key.bkp
+  curl -kfsSL "{{ ZABBIX_URL }}/monitor-utils/get/autoregistration/psk.key?proxyToken=$proxyToken" | sudo tee /etc/zabbix/psk.key
+  curl -kfsSL "{{ ZABBIX_URL }}/monitor-utils/get/autoregistration/zabbix_agent2.conf?proxyToken=$proxyToken&HostMetadata={{ HostMetadata }}" -o zabbix_agent2.conf  && sudo mv zabbix_agent2.conf /etc/zabbix/
+  sudo systemctl restart zabbix-agent2
+}
+
+
+function main() {
+  if [[ $1 == "uninstall" ]]; then
+    uninstallZabbix
+  fi
+  cd "${tmpdir}"
+  if [[ ${os_base} == "redhat" ]]; then
+    echo "Redhat"
+  elif [[ ${os_base} == "debian" ]]; then
+    echo "Debian"
+  else
+    echo "OS ${ID} ${VERSION_ID} is not supported."
+    clean_up
+    exit 1
+  fi
+  uninstallZabbix
+  zabbix_install
+  updateZabbixFiles
+  clean_up
+}
+
+main
+
+
+# NOTES
+
+# if [ $# -ne 1 ]; then
+#   echo "Requires ."
+#   echo "Usage: $0 <something>"
+#   echo "Example: $0 something"
+#   exit 1
+# fi
+
+{% else %}
+# Unsupported OS and/or shell.
+{% endif %}
