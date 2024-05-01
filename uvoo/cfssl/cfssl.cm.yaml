@@ -1,9 +1,10 @@
 ---
 apiVersion: v1
 data:
-  GOOSE_DRIVER: sqlite3
-  # GOOSE_DBSTRING=./certs.db
-  GOOSE_DBSTRING: ./certs.db
+  # GOOSE_DRIVER: sqlite3
+  GOOSE_DRIVER: postgres
+  # GOOSE_MIGRATION_DIR: migrations/sqlite3 
+  GOOSE_MIGRATION_DIR: migrations/postgres
   ORG_NAME: ExampleOrg
   ORG_DOMAIN: example.com
 
@@ -18,7 +19,7 @@ data:
   CLIENT_INTERMEDIATE_CN: ExampleOrg-ICA3aClient
   # CLIENT_INTERMEDIATE_CN="${ORG_NAME} Server R1"
 
-  O: BDAIM
+  O: EXAMPLE
   ALGO: rsa
   ALGOSIZE: "4096"
   INTERMEDIATE_EXPIRE_HOURS: 43800h

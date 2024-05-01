@@ -84,7 +84,9 @@ RUN cd src && \
   sudo cp bin/* /usr/local/bin/
 # RUN mkdir $APP_DIR/cfssl-ca && cp src/cfssl/certdb/sqlite/migrations/*.sql $AAPP_DIR/cfssl-ca/
 # RUN cp src/cfssl/certdb/sqlite/migrations/*.sql ./cfssl-ca/ 
-RUN cp src/cfssl/certdb/sqlite/migrations/*.sql ./ 
+RUN mkdir -p migrations
+RUN mv src/cfssl/certdb/sqlite/migrations ./migrations/sqlite3
+RUN mv src/cfssl/certdb/pg/migrations ./migrations/postgres
 RUN rm -rf src
 # RUN chown -R app:app ${APP_DIR}:${APP_DIR}
 # RUN chown -R ${APP_DIR}:${APP_DIR} ${APP_DIR}
