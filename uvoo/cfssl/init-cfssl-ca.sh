@@ -25,7 +25,7 @@ goose status
 mkdir -p root intermediate certificates
 
 cat <<EOF > db-config.json
-  {"driver":"sqlite3","data_source":"certs.db"}
+  {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
 EOF
 
 cat <<EOF > root/root-csr.json

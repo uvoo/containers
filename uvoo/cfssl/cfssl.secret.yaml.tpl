@@ -1,6 +1,8 @@
 ---
 apiVersion: v1
 stringData:
+  # GOOSE_DBSTRING=./certs.db
+  GOOSE_DBSTRING: postgresql://app:ChangeMe@cfssl-rw.cfssl.svc:5432/app?sslmode=require
   ROOTCA1_PASS: ChangeMe
   ICA1a_PASS: ChangeThis
   # openssl rand -hex 16
