@@ -258,7 +258,7 @@ cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=s
 
 # TEST
 cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
-openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.crt
+openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.pem
 
 date > initialized
 
