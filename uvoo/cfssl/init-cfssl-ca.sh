@@ -198,7 +198,7 @@ cat << EOF > ocsp-csr.json
 EOF
 
 cfssl sign -ca ca/rootca1.crt \
-  -ca-key ca/rootca.key \
+  -ca-key ca/rootca1.key \
   -config config.json \
   -profile root_ca \
   ca/ica1.csr \
