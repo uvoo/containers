@@ -1,16 +1,5 @@
 #!/bin/bash
 set -aeu
-# . .env
-# . .env.secrets
-
-# init_postgres () {
-# cat << EOF | sudo -Hiu postgres psql
-# CREATE ROLE ${PGUSER} WITH login PASSWORD '${PGPASSWORD}';
-# CREATE DATABASE ${PGDATABASE} OWNER ${PGUSER};
-# grant all privileges on database ${PGDATABASE} to ${PGUSER};
-# EOF
-# }
-# init_postgres
 
 if test -f initialized; then
   exit 0
@@ -20,15 +9,13 @@ goose version
 goose up
 goose status
 
-# mkdir -p ${OUT_DIR}
-# cd ${OUT_DIR}
-mkdir -p root intermediate certificates
+mkdir -p ca certificates
 
 cat <<EOF > db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
 EOF
 
-cat <<EOF > root/root-csr.json
+cat <<EOF > ca/root-csr.json
 {
   "CN": "${ROOT_CN}",
   "key": {
@@ -48,10 +35,14 @@ cat <<EOF > root/root-csr.json
 }
 EOF
 
-cfssl gencert -initca root/root-csr.json \
-| cfssljson -bare root/root-ca
+cfssl gencert -initca ca/root-csr.json \
+  | cfssljson -bare ca/rootca1
 
-cat << EOF > intermediate/intermediate-csr.json
+cd ca/
+openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
+cd ..
+
+cat << EOF > ca/ica1-csr.json
 {
   "CN": "${INTERMEDIATE_CN}",
   "key": {
@@ -68,10 +59,10 @@ cat << EOF > intermediate/intermediate-csr.json
 }
 EOF
 
-cfssl genkey intermediate/intermediate-csr.json \
-| cfssljson -bare intermediate/intermediate-ca
+cfssl genkey ca/ica1-csr.json \
+  | cfssljson -bare ca/ica1
 
-cat << EOF > certificates/ocsp.csr.json
+cat << EOF > certificates/ocsp-csr.json
 {
   "CN": "OCSP Signer",
   "key": {
@@ -115,7 +106,7 @@ cat << EOF > config.json
         "expiry": "${ROOT_EXPIRE_HOURS}",
         "ca_constraint": {
           "is_ca": true,
-          "max_path_len": 2,
+          "max_path_len": 1,
           "max_path_len_zero": false
         }
       },
@@ -188,7 +179,7 @@ cat << EOF > config.json
 }
 EOF
 
-cat << EOF > ocsp.csr.json
+cat << EOF > ocsp-csr.json
 {
   "CN": "OCSP signer",
   "key": {
@@ -205,29 +196,21 @@ cat << EOF > ocsp.csr.json
 }
 EOF
 
-cfssl sign -ca root/root-ca.pem \
-  -ca-key root/root-ca-key.pem \
+cfssl sign -ca root/rootca1.crt \
+  -ca-key root/rootca.key \
   -config config.json \
   -profile root_ca \
-  intermediate/intermediate-ca.csr \
-| cfssljson -bare intermediate/intermediate-ca
+  ca/ica1.csr \
+  | cfssljson -bare ca/ica1
 
-cfssl gencert -ca intermediate/intermediate-ca.pem \
-        -ca-key intermediate/intermediate-ca-key.pem \
-        -config config.json -profile="ocsp" ocsp.csr.json \
-        | cfssljson -bare certificates/server-ocsp -
+cfssl gencert -ca ca/ica1.crt \
+  -ca-key ca/ica1.key \
+  -config config.json -profile="ocsp" ocsp-csr.json \
+  | cfssljson -bare certificates/server-ocsp -
 
-    #     "default": {
-    #         "ocsp_url": "http://localhost:8889",
-    #         "crl_url": "http://localhost:8888/crl",
-    #         "expiry": "${DEFAULT_EXPIRE_HOURS}",
-    #         "usages": [
-    #             "signing",
-    #             "key encipherment",
-    #             "client auth"
-    #         ]
-    #     },
-
+cd ca/
+openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
+cd ..
 
 cat << EOF > certificates/my-webserver-csr.json
 {
@@ -268,20 +251,11 @@ cat << EOF > certificates/localhost.json
 }
 EOF
 
-cfssl gencert -ca intermediate/intermediate-ca.pem -ca-key intermediate/intermediate-ca-key.pem -config config.json -profile=server certificates/localhost.json | cfssljson -bare certificates/localhost
+cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=server certificates/localhost.json | cfssljson -bare certificates/localhost
 
 # TEST
-cat root/root-ca.pem > intermediate.chain.pem
-cat intermediate/intermediate-ca.pem >> intermediate.chain.pem
-openssl verify -CAfile intermediate.chain.pem certificates/localhost.pem
-
-# OTHER
-# cp certificates/localhost-key.pem /etc/nginx/certs/localhost.key
-# cat certificates/localhost.pem intermediate/intermediate-ca.pem root/root-ca.pem > /etc/nginx/certs/localhost.crt
-# sudo cp root/root-ca.pem /usr/local/share/ca-certificates/testroot.crt
-# sudo update-ca-certificates
-
-# cd ..
+cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
+openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.crt
 
 date > initialized
 
