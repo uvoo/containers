@@ -51,6 +51,10 @@ EOF
 cfssl gencert -initca root/root-csr.json \
 | cfssljson -bare root/root-ca
 
+cd root/
+openssl rsa -aes256 -in root-ca-key.pem -passout pass:$ROOT_CA_PASS -out root-ca-key.pem.enc
+cd ..
+
 cat << EOF > intermediate/intermediate-csr.json
 {
   "CN": "${INTERMEDIATE_CN}",
@@ -216,6 +220,10 @@ cfssl gencert -ca intermediate/intermediate-ca.pem \
         -ca-key intermediate/intermediate-ca-key.pem \
         -config config.json -profile="ocsp" ocsp.csr.json \
         | cfssljson -bare certificates/server-ocsp -
+
+cd intermediate/
+openssl rsa -aes256 -in intermediate-ca-key.pem -passout pass:$INTERMEDIATE_CA_PASS -out intermediate-ca-key.pem.enc
+cd ..
 
     #     "default": {
     #         "ocsp_url": "http://localhost:8889",
