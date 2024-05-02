@@ -36,8 +36,9 @@ cat <<EOF > ca/root-csr.json
 EOF
 
 cfssl gencert -initca ca/root-csr.json \
-  | cfssljson -bare ca/rootca1
-
+  | cfssljson -bare ca/rootca1 -cert
+mv ca/rootca1.pem ca/rootca1.crt
+mv ca/rootca1-key.pem ca/rootca1.key
 cd ca/
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
 cd ..
@@ -202,6 +203,8 @@ cfssl sign -ca root/rootca1.crt \
   -profile root_ca \
   ca/ica1.csr \
   | cfssljson -bare ca/ica1
+mv ca/ica1.pem ca/ica1.crt
+mv ca/ica1-key.pem ca/ica1.key
 
 cfssl gencert -ca ca/ica1.crt \
   -ca-key ca/ica1.key \
