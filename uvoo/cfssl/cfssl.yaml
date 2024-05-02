@@ -12,7 +12,7 @@ spec:
   ports:
   - port: 8443 
     targetPort: 8443
-    nodePort: 30001
+    nodePort: 30099
   selector:
     app: cfssl
 ---
@@ -39,19 +39,27 @@ kind: ConfigMap
 metadata:
   name: nginx-config
 data:
-  nginx.conf: '
+  nginx.conf: |
+    events {
+      worker_connections  1024;
+    }
+    http {
+      server {
+        listen 8443 ssl;
+        server_name your.cfssl.server;
 
-events {
-}
-http {
-   server {
-    listen 8443 ssl;
-    server_name your.cfssl.server;
+        ssl_certificate /files/self.crt;
+        ssl_certificate_key /files/self.key;
 
-    ssl_certificate /files/self.crt;
-    ssl_certificate_key /files/self.key;
+        # location /nginxhealthz {
+        #   return 200 "nginx ok";
+        # }
+        location / {
+          allow 192.168.1.1;
+          allow 10.0.0.1;
+          allow 172.16.0.1;
+          deny all;
 
-       location / {
           auth_basic "Restricted Access";
           auth_basic_user_file /files/.htpasswd;
 
@@ -61,12 +69,9 @@ http {
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
 
-       }
-   }
-}
-
-'
-           # return 200 "Hello world!";
+        }
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -85,16 +90,12 @@ spec:
     spec:
       containers:
       - name: cfssl
-        image: uvoo/cfssl:0.0.1 
+        image: uvoo/cfssl:0.0.2
         envFrom:
         - configMapRef:
             name: cfssl-env
         - secretRef:
             name: cfssl-env
-        # args:
-        # - "-text=Hello, Kubernetes!"
-        # ports:
-        # - containerPort: 3000
       - image: nginx:latest
         name: nginx
         ports:
