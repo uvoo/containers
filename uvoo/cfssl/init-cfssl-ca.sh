@@ -41,6 +41,7 @@ mv ca/rootca1.pem ca/rootca1.crt
 mv ca/rootca1-key.pem ca/rootca1.key
 cd ca/
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
+rm rootca1.key
 cd ..
 
 cat << EOF > ca/ica1-csr.json
@@ -213,6 +214,7 @@ cfssl gencert -ca ca/ica1.crt \
 
 cd ca/
 openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
+rm ica1.key
 cd ..
 
 cat << EOF > certificates/my-webserver-csr.json
