@@ -83,6 +83,12 @@ EOF
 
 cat << EOF > config.json
 {
+  "auth_keys": {
+    "primary": {
+      "type":"standard",
+      "key":"0123456789ABCDEF0123456789ABCDEF"
+	  }
+  },
   "signing": {
     "default": {
       "ocsp_url": "http://localhost:8889",
