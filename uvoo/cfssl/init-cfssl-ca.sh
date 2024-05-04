@@ -9,7 +9,7 @@ goose version
 goose up
 goose status
 
-sleep 5
+sleep 500
 ls -lhat
 mkdir -p ca certificates
 cfssl gencert -initca ca/root-csr.json \
