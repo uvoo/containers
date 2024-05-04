@@ -53,8 +53,6 @@ spec:
       protocol: TCP
   selector:
      app: cfssl
-    # app.kubernetes.io/instance: postgrest
-    # app.kubernetes.io/name: postgrest
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -73,34 +71,52 @@ spec:
       containers:
       - name: cfssl
         image: uvoo/cfssl:latest
+        # command: ["/bin/sh","-c"]
+        # args: ["sleep 12419200"]
+        # imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+          - name: ca
+            mountPath: /home/app/ca
+          - name: certificates
+            mountPath: /home/app/certificates
         envFrom:
         - configMapRef:
             name: cfssl-env
         - secretRef:
             name: cfssl-env
-      - image: nginx:latest
-        name: nginx
+      - name: nginx
+        image: nginx:latest
         ports:
         - containerPort: 8443
           name: https
         volumeMounts:
-          - name: nginx-conf
-            mountPath: /etc/nginx/
           - name: files
             mountPath: /files
+          - name: nginx-cache
+            mountPath: /var/cache/nginx
+          - name: nginx-conf
+            mountPath: /etc/nginx/
       volumes:
-        - name: nginx-conf
-          secret:
-            secretName: nginx-config
-            items:
-              - key: nginx.conf
-                path: nginx.conf
-        - name: files
-          secret:
-            secretName: files
         - name: ca
           persistentVolumeClaim:
             claimName: ca
         - name: certificates
           persistentVolumeClaim:
             claimName: certificates
+        - name: files
+          secret:
+            secretName: files
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-conf
+          secret:
+            secretName: nginx-config
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+      # Below breaks nginx. Use bitnami/nginx if wanted.
+      # securityContext:
+      #   runAsUser: 1000
+      #   runAsGroup: 1000
+      #   fsGroup: 1000
