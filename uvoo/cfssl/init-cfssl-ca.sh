@@ -1,5 +1,5 @@
 #!/bin/bash
-set -aeux
+set -aeu
 
 if test -f ca/initialized; then
   exit 0
