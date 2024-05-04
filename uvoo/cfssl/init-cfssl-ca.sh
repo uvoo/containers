@@ -1,5 +1,5 @@
 #!/bin/bash
-set -aeu
+set -aeux
 
 if test -f ca/initialized; then
   exit 0
@@ -8,8 +8,6 @@ fi
 goose version
 goose up
 goose status
-
-mkdir -p ca certificates
 
 cat <<EOF > db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
@@ -35,8 +33,12 @@ cat <<EOF > ca/root-csr.json
 }
 EOF
 
+sleep 5
+mkdir -p ca certificates
 cfssl gencert -initca ca/root-csr.json \
   | cfssljson -bare ca/rootca1 -cert
+ls -lhat
+ls -lhat ca/
 mv ca/rootca1.pem ca/rootca1.crt
 mv ca/rootca1-key.pem ca/rootca1.key
 cd ca/
