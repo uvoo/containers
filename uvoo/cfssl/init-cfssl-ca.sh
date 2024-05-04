@@ -5,15 +5,18 @@ if test -f ca/initialized; then
   exit 0
 fi
 
+sleep 30
+
 goose version
 goose up
 goose status
 
-cat <<EOF > ca/db-config.json
+cd ca
+cat <<EOF > db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
 EOF
 
-cat <<EOF > ca/root-csr.json
+cat <<EOF > root-csr.json
 {
   "CN": "${ROOT_CN}",
   "key": {
@@ -33,15 +36,13 @@ cat <<EOF > ca/root-csr.json
 }
 EOF
 
-cfssl gencert -initca ca/root-csr.json \
-  | cfssljson -bare ca/rootca1 -cert
-mv ca/rootca1.pem ca/rootca1.crt
-mv ca/rootca1-key.pem ca/rootca1.key
-cd ca/
+cfssl gencert -initca root-csr.json \
+  | cfssljson -bare rootca1 -cert
+mv rootca1.pem rootca1.crt
+mv rootca1-key.pem rootca1.key
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
-cd ..
 
-cat << EOF > ca/ica1-csr.json
+cat << EOF > ica1-csr.json
 {
   "CN": "${INTERMEDIATE_CN}",
   "key": {
@@ -58,8 +59,9 @@ cat << EOF > ca/ica1-csr.json
 }
 EOF
 
-cfssl genkey ca/ica1-csr.json \
-  | cfssljson -bare ca/ica1
+cfssl genkey ica1-csr.json \
+  | cfssljson -bare ica1
+cd ..
 
 cat << EOF > certificates/ocsp-csr.json
 {
@@ -78,6 +80,7 @@ cat << EOF > certificates/ocsp-csr.json
 }
 EOF
 
+cd ca/
 cat << EOF > config.json
 {
   "auth_keys": {
@@ -195,21 +198,19 @@ cat << EOF > ocsp-csr.json
 }
 EOF
 
-cfssl sign -ca ca/rootca1.crt \
-  -ca-key ca/rootca1.key \
+cfssl sign -ca rootca1.crt \
+  -ca-key rootca1.key \
   -config config.json \
   -profile root_ca \
-  ca/ica1.csr \
-  | cfssljson -bare ca/ica1
-mv ca/ica1.pem ca/ica1.crt
-mv ca/ica1-key.pem ca/ica1.key
+  ica1.csr \
+  | cfssljson -bare ica1
+mv ica1.pem ica1.crt
+mv ica1-key.pem ica1.key
 
-cfssl gencert -ca ca/ica1.crt \
-  -ca-key ca/ica1.key \
+cfssl gencert -ca ica1.crt \
+  -ca-key ica1.key \
   -config config.json -profile="ocsp" ocsp-csr.json \
   | cfssljson -bare certificates/server-ocsp -
-
-cd ca/
 openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
 cd ..
 
