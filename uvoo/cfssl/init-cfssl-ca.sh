@@ -1,7 +1,7 @@
 #!/bin/bash
 set -aeu
 
-if test -f initialized; then
+if test -f ca/initialized; then
   exit 0
 fi
 
@@ -171,12 +171,6 @@ cat << EOF > config.json
         "expiry": "${OSCP_EXPIRE_HOURS}"
       }
     }
-  },
-  "auth_keys": {
-    "key1": {
-      "type":"standard",
-      "key": "${AUTH_KEY1}"
-	  }
   }
 }
 EOF
@@ -262,7 +256,7 @@ cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=s
 cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
 openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.pem
 
-date > initialized
+date > ca/initialized
 
 
 # More Tests
