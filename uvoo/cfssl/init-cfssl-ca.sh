@@ -5,8 +5,6 @@ if test -f ca/initialized; then
   exit 0
 fi
 
-sleep 30
-
 goose version
 goose up
 goose status
@@ -40,6 +38,7 @@ cfssl gencert -initca root-csr.json \
   | cfssljson -bare rootca1 -cert
 mv rootca1.pem rootca1.crt
 mv rootca1-key.pem rootca1.key
+
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
 
 cat << EOF > ica1-csr.json
@@ -61,9 +60,8 @@ EOF
 
 cfssl genkey ica1-csr.json \
   | cfssljson -bare ica1
-cd ..
 
-cat << EOF > certificates/ocsp-csr.json
+cat << EOF > ocsp-csr.json
 {
   "CN": "OCSP Signer",
   "key": {
@@ -80,7 +78,6 @@ cat << EOF > certificates/ocsp-csr.json
 }
 EOF
 
-cd ca/
 cat << EOF > config.json
 {
   "auth_keys": {
@@ -210,11 +207,11 @@ mv ica1-key.pem ica1.key
 cfssl gencert -ca ica1.crt \
   -ca-key ica1.key \
   -config config.json -profile="ocsp" ocsp-csr.json \
-  | cfssljson -bare certificates/server-ocsp -
-openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
-cd ..
+  | cfssljson -bare ../certificates/server-ocsp -
 
-cat << EOF > certificates/my-webserver-csr.json
+openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
+
+cat << EOF > ../certificates/my-webserver-csr.json
 {
   "CN": "my-webserver.example.com",
   "hosts": ["my-webserver.example.com", "192.168.1.20"],
@@ -230,7 +227,7 @@ cat << EOF > certificates/my-webserver-csr.json
 }
 EOF
 
-cat << EOF > certificates/localhost.json
+cat << EOF > ../certificates/localhost.json
 {
   "CN": "localhost",
   "key": {
@@ -253,17 +250,17 @@ cat << EOF > certificates/localhost.json
 }
 EOF
 
-cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=server certificates/localhost.json | cfssljson -bare certificates/localhost
+cfssl gencert -ca ica1.crt -ca-key ica1.key -config config.json -profile=server ../certificates/localhost.json | cfssljson -bare ../certificates/localhost
 
 # Remove encrypted keys
-rm ca/rootca1.key
-rm ca/ica1.key
+rm rootca1.key
+rm ica1.key
 
 # TEST
-cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
-openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.pem
+cat rootca1.crt ica1.crt > ica1.chain.crt 
+openssl verify -CAfile ica1.chain.crt ../certificates/localhost.pem
 
-date > ca/initialized
+date > initialized
 
 
 # More Tests
