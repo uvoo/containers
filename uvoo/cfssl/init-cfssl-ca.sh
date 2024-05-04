@@ -9,7 +9,7 @@ goose version
 goose up
 goose status
 
-cat <<EOF > db-config.json
+cat <<EOF > ca/db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
 EOF
 
