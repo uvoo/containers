@@ -9,13 +9,6 @@ goose version
 goose up
 goose status
 
-sleep 500
-ls -lhat
-mkdir -p ca certificates
-cfssl gencert -initca ca/root-csr.json \
-  | cfssljson -bare ca/rootca1 -cert
-ls -lhat ca/
-
 cat <<EOF > db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
 EOF
@@ -40,11 +33,12 @@ cat <<EOF > ca/root-csr.json
 }
 EOF
 
+cfssl gencert -initca ca/root-csr.json \
+  | cfssljson -bare ca/rootca1 -cert
 mv ca/rootca1.pem ca/rootca1.crt
 mv ca/rootca1-key.pem ca/rootca1.key
 cd ca/
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
-rm rootca1.key
 cd ..
 
 cat << EOF > ca/ica1-csr.json
@@ -217,7 +211,6 @@ cfssl gencert -ca ca/ica1.crt \
 
 cd ca/
 openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
-rm ica1.key
 cd ..
 
 cat << EOF > certificates/my-webserver-csr.json
@@ -260,6 +253,10 @@ cat << EOF > certificates/localhost.json
 EOF
 
 cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=server certificates/localhost.json | cfssljson -bare certificates/localhost
+
+# Remove encrypted keys
+rm ca/rootca1.key
+rm ca/ica1.key
 
 # TEST
 cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
