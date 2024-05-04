@@ -74,7 +74,7 @@ spec:
         # command: ["/bin/sh","-c"]
         # args: ["sleep 12419200"]
         # imagePullPolicy: Always
-        imagePullPolicy: IfNotPresent
+        # imagePullPolicy: IfNotPresent
         volumeMounts:
           - name: ca
             mountPath: /home/app/ca

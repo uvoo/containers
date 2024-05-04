@@ -9,6 +9,7 @@ goose version
 goose up
 goose status
 
+mkdir -p ca certificates
 cd ca
 cat <<EOF > db-config.json
   {"driver":"$GOOSE_DRIVER","data_source":"$GOOSE_DBSTRING"}
@@ -79,13 +80,6 @@ cat << EOF > ocsp-csr.json
 EOF
 
 cat << EOF > config.json
-{
-  "auth_keys": {
-    "primary": {
-      "type":"standard",
-      "key":"0123456789ABCDEF0123456789ABCDEF"
-	  }
-  },
   "signing": {
     "default": {
       "ocsp_url": "http://localhost:8889",
@@ -207,11 +201,12 @@ mv ica1-key.pem ica1.key
 cfssl gencert -ca ica1.crt \
   -ca-key ica1.key \
   -config config.json -profile="ocsp" ocsp-csr.json \
-  | cfssljson -bare ../certificates/server-ocsp -
+  | cfssljson -bare server-ocsp -
 
 openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
+cd ../
 
-cat << EOF > ../certificates/my-webserver-csr.json
+cat << EOF > certificates/my-webserver-csr.json
 {
   "CN": "my-webserver.example.com",
   "hosts": ["my-webserver.example.com", "192.168.1.20"],
@@ -227,7 +222,7 @@ cat << EOF > ../certificates/my-webserver-csr.json
 }
 EOF
 
-cat << EOF > ../certificates/localhost.json
+cat << EOF > certificates/localhost.json
 {
   "CN": "localhost",
   "key": {
@@ -250,6 +245,8 @@ cat << EOF > ../certificates/localhost.json
 }
 EOF
 
+cd ca
+
 cfssl gencert -ca ica1.crt -ca-key ica1.key -config config.json -profile=server ../certificates/localhost.json | cfssljson -bare ../certificates/localhost
 
 # Remove encrypted keys
@@ -257,7 +254,7 @@ rm rootca1.key
 rm ica1.key
 
 # TEST
-cat rootca1.crt ica1.crt > ica1.chain.crt 
+cat rootca1.crt ica1.crt > ica1.chain.crt
 openssl verify -CAfile ica1.chain.crt ../certificates/localhost.pem
 
 date > initialized
@@ -267,5 +264,3 @@ date > initialized
 # curl -v https://localhost
 # host=localhost; port=443; echo quit | openssl s_client -showcerts -servername server -connect $host:$port | grep subject
 # host=localhost; port=443; echo "" | openssl s_client -connect ${host}:${port} 2>&1 | grep -A 6 "Certificate chain"
-
-
