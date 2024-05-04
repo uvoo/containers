@@ -5,14 +5,12 @@ data:
   GOOSE_DRIVER: postgres
   # GOOSE_MIGRATION_DIR: migrations/sqlite3 
   GOOSE_MIGRATION_DIR: migrations/postgres
-  ORG_NAME: ExampleOrg
-  ORG_DOMAIN: example.com
 
   C: US
   S: Utah
   L: Lehi
   O: ExampleOrg
-  OU: example.com
+  OU: example.org
   ROOT_CN: ExampleOrg-RootCA1
   INTERMEDIATE_CN: ExampleOrg-ICA1a
   HOST_INTERMEDIATE_CN: ExampleOrg-ICA2aHost

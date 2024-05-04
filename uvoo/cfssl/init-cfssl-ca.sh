@@ -1,7 +1,7 @@
 #!/bin/bash
 set -aeu
 
-if test -f initialized; then
+if test -f ca/initialized; then
   exit 0
 fi
 
@@ -41,6 +41,7 @@ mv ca/rootca1.pem ca/rootca1.crt
 mv ca/rootca1-key.pem ca/rootca1.key
 cd ca/
 openssl rsa -aes256 -in rootca1.key -passout pass:$ROOT_CA_PASS -out rootca1.key.enc
+rm rootca1.key
 cd ..
 
 cat << EOF > ca/ica1-csr.json
@@ -170,12 +171,6 @@ cat << EOF > config.json
         "expiry": "${OSCP_EXPIRE_HOURS}"
       }
     }
-  },
-  "auth_keys": {
-    "key1": {
-      "type":"standard",
-      "key": "${AUTH_KEY1}"
-	  }
   }
 }
 EOF
@@ -213,6 +208,7 @@ cfssl gencert -ca ca/ica1.crt \
 
 cd ca/
 openssl rsa -aes256 -in ica1.key -passout pass:$INTERMEDIATE_CA_PASS -out ica1.key.enc
+rm ica1.key
 cd ..
 
 cat << EOF > certificates/my-webserver-csr.json
@@ -260,7 +256,7 @@ cfssl gencert -ca ca/ica1.crt -ca-key ca/ica1.key -config config.json -profile=s
 cat ca/rootca1.crt ca/ica1.crt > ca/ica1.chain.crt 
 openssl verify -CAfile ca/ica1.chain.crt certificates/localhost.pem
 
-date > initialized
+date > ca/initialized
 
 
 # More Tests

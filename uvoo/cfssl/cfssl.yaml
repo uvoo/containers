@@ -4,13 +4,35 @@
 # Then in you browser: http://localhost:8001/api/v1/namespaces/default/services/nginx:/proxy/#!/
 
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ca
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: certificates
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: nginx
 spec:
   type: NodePort
   ports:
-  - port: 8443 
+  - port: 8443
     targetPort: 8443
     nodePort: 30099
   selector:
@@ -33,46 +55,6 @@ spec:
      app: cfssl
     # app.kubernetes.io/instance: postgrest
     # app.kubernetes.io/name: postgrest
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-config
-data:
-  nginx.conf: |
-    events {
-      worker_connections  1024;
-    }
-    http {
-      server {
-        listen 8443 ssl;
-        server_name your.cfssl.server;
-
-        ssl_certificate /files/self.crt;
-        ssl_certificate_key /files/self.key;
-
-        # location /nginxhealthz {
-        #   return 200 "nginx ok";
-        # }
-        location / {
-          allow 192.168.1.1;
-          allow 10.0.0.1;
-          allow 172.16.0.1;
-          deny all;
-
-          auth_basic "Restricted Access";
-          auth_basic_user_file /files/.htpasswd;
-
-          proxy_pass http://localhost:3000;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-
-        }
-      }
-    }
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -90,7 +72,7 @@ spec:
     spec:
       containers:
       - name: cfssl
-        image: uvoo/cfssl:0.0.2
+        image: uvoo/cfssl:latest
         envFrom:
         - configMapRef:
             name: cfssl-env
@@ -108,11 +90,17 @@ spec:
             mountPath: /files
       volumes:
         - name: nginx-conf
-          configMap:
-            name: nginx-config
+          secret:
+            secretName: nginx-config
             items:
               - key: nginx.conf
                 path: nginx.conf
         - name: files
           secret:
             secretName: files
+        - name: ca
+          persistentVolumeClaim:
+            claimName: ca
+        - name: certificates
+          persistentVolumeClaim:
+            claimName: certificates
