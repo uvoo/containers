@@ -7,7 +7,7 @@ RUN apk add --no-cache \
     curl
 
 # Download and install Blackbox Exporter
-ENV BLACKBOX_EXPORTER_VERSION 0.23.0
+ENV BLACKBOX_EXPORTER_VERSION 0.25.0
 RUN wget https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_EXPORTER_VERSION}/blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz && \
     tar -xzf blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz && \
     mv blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64/blackbox_exporter /usr/local/bin/blackbox_exporter && \
