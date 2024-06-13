@@ -24,6 +24,7 @@ COPY default.config.yml /etc/blackbox_exporter/config.yml
 
 # Set the permissions
 RUN chown nonrootuser:nonrootuser /etc/blackbox_exporter/config.yml
+RUN ln -s /etc/blackbox_exporter/config.yml /config/blackbox.yaml
 
 # Expose the port
 EXPOSE 9115
