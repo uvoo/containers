@@ -1,39 +1,58 @@
-# Use a lightweight base image
-FROM alpine:latest
+# Stage 1: Build the Go application
+FROM golang:1.21 as builder
 
-# Install necessary packages
-RUN apk add --no-cache \
-    libcap \
-    curl
 
-# Download and install Blackbox Exporter
-ENV BLACKBOX_EXPORTER_VERSION 0.25.0
-RUN wget https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_EXPORTER_VERSION}/blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz && \
-    tar -xzf blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz && \
-    mv blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64/blackbox_exporter /usr/local/bin/blackbox_exporter && \
-    rm -rf blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64*
+# Set the working directory inside the container
+WORKDIR /app
 
-# Set the capability to allow ICMP
-RUN setcap cap_net_raw+ep /usr/local/bin/blackbox_exporter
+# Copy go.mod and go.sum files
+COPY go.mod go.sum ./
 
-# Create a user with UID 1000
-RUN adduser -D -u 1000 nonrootuser
+# Download all dependencies
+RUN go mod download
 
-# Create a configuration file for Blackbox Exporter
-COPY default.config.yml /etc/blackbox_exporter/config.yml
+# Copy the source code
+COPY . .
 
-# Set the permissions
-RUN chown nonrootuser:nonrootuser /etc/blackbox_exporter/config.yml
-RUN mkdir /config
-RUN ln -s /etc/blackbox_exporter/config.yml /config/blackbox.yaml
+# Build the Go application
+RUN go build -o mtr_probe .
 
-# Expose the port
-EXPOSE 9115
+# Stage 2: Build the final image
+FROM debian:bookworm-slim
+ENV BLACKBOX_EXPORTER_VERSION="0.25.0"
 
-# Run the exporter as the non-root user
-USER nonrootuser
+# Install MTR and necessary utilities
+RUN apt-get update && apt-get install -y mtr-tiny wget ca-certificates iproute2
 
-# Command to run the Blackbox Exporter
-# CMD ["blackbox_exporter", "--config.file=/etc/blackbox_exporter/config.yml"]
+# Install Blackbox Exporter
+RUN wget https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_EXPORTER_VERSION}/blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz \
+    && tar -xzf blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64.tar.gz \
+    && mv blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64/blackbox_exporter /usr/local/bin/ \
+    && rm -rf blackbox_exporter-${BLACKBOX_EXPORTER_VERSION}.linux-amd64*
 
-CMD ["blackbox_exporter", "--config.file=/etc/blackbox_exporter/config.yml", "--log.level=debug"]
+# Create a new group for ping and add the nobody user to it
+# RUN adduser -D -u 1000 app
+RUN useradd -r -u 1000 -s /bin/false app 
+# RUN addgroup -g 9999 ping && addgroup nobody ping && addgroup app ping
+# RUN addgroup -g 9999 ping
+RUN groupadd ping -g 9999
+RUN usermod -aG ping app 
+
+# Set the necessary permissions on the blackbox_exporter binary
+RUN set -x
+RUN chgrp ping /usr/local/bin/blackbox_exporter && chmod g+rx /usr/local/bin/blackbox_exporter
+# COPY default.config.yml /etc/blackbox_exporter/config.yml
+
+# Copy the Go application binary
+COPY --from=builder /app/mtr_probe /usr/local/bin/mtr_probe
+
+# Create a blackbox exporter config
+COPY blackbox.yml /etc/blackbox_exporter/config.yml
+
+# Expose ports for both services
+EXPOSE 9115 9116
+
+USER 1000 
+STOPSIGNAL SIGUSR1
+# Start both the Go application and Blackbox Exporter
+CMD ["sh", "-c", "mtr_probe & blackbox_exporter --config.file=/etc/blackbox_exporter/config.yml"]
