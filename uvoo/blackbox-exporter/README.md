@@ -2,9 +2,12 @@
 
 https://github.com/prometheus/blackbox_exporter
 
-
+```
 ./scripts/build.sh
 
 sudo docker rm -f blackbox-exporter
 
 ./scripts/run.sh
+````
+
+https://github.com/prometheus/blackbox_exporter/blob/master/Dockerfile
