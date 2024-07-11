@@ -151,6 +151,22 @@ postconf -e 'smtpd_tls_auth_only = yes'
 
 # postconf -e 'maillog_file = /dev/stdout'
 
+# SENDER_DOMAINS="a.com b.com"
+if [ ! -z ${SENDER_DOMAINS+x} ]; then
+  for i in ${SENDER_DOMAINS}; do
+    echo "$i OK" >> /etc/postfix/sender_domains
+    postmap /etc/postfix/sender_domains
+    postconf -e "smtpd_sender_restrictions = check_sender_access hash:/etc/postfix/sender_domains, reject"
+  done
+fi
+if [ ! -z ${RECIPIENT_DOMAINS+x} ]; then
+  for i in ${RECIPIENT_DOMAINS}; do
+    echo "$i OK" >> /etc/postfix/recipient_domains
+    postmap /etc/postfix/recipient_domains
+    postconf -e "smtpd_recipient_restrictions = check_recipient_access hash:/etc/postfix/recipient_domains, reject_unauth_destination"
+  done
+fi
+
 chroot_mods(){
   sudo mkdir -p /var/spool/postfix/etc
   sudo cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf

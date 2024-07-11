@@ -5,10 +5,13 @@ mkdir -p keys logs spool_postfix
 sudo chmod 0755 keys logs spool_postfix
 cd ../
 docker run -p 8587:8587 \
+  --dns=127.0.0.1 \
   -e SMTP_USERNAME=tester@localhost \
   -e SMTP_USERPASS=PleaseChangeMe \
   -e SMTP_USERS="tester@localhost:PleaseChangeMe tester1@localhost:PleaseChangeMe" \
   -e MYNETWORKS="127.0.0.0/8 172.16.0.0/12 10.210.77.1/32" \
+  -e SENDER_DOMAINS="example.com" \
+  -e RECIPIENT_DOMAINS="example.com example.org" \
   -e DKIM_DOMAINS="example.com" \
   -e DKIM_SELECTORS="default mail" \
   -e MYHOSTNAME="mail.example.com" \
