@@ -88,3 +88,8 @@ You can disable it it via there is sed line in docker-entrypoint.sh script
 ```
 smtp      inet  n       -       n       -       -       smtpd
 ```
+
+# Policy
+```
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination, check_policy_service inet:127.0.0.1:10023
+```
