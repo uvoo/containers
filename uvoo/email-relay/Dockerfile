@@ -43,6 +43,7 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # COPY ./main.cf.tpl /etc/postfix/
 # COPY ./master.cf.tpl /etc/postfix/
+COPY ./check-policy-service.py /etc/
 COPY ./opendkim.conf /etc/
 COPY ./supervisord.conf /etc/supervisord.conf
 COPY ./rsyslog.conf /etc/rsyslog.conf

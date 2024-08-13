@@ -7,11 +7,13 @@ crt_file=/etc/ssl/certs/tls.crt
 if [ -n "${TLS_CRT-}" ] && [ -n "${TLS_KEY-}" ]; then
   echo "${TLS_CRT}" > $crt_file
   echo "${TLS_KEY}" > $key_file
+  sudo chown root:postfix $key_file
+  sudo chmod 640 $key_file
 else
   echo "TLS_CRT and TLS_KEY env vars not provided so generating self signed key/cert with DNS $MYHOSTNAME."
   openssl req -x509 -nodes -days 3650 -newkey rsa:4096 -keyout tls.key -out tls.crt -subj "/CN=$MYHOSTNAME" -addext "subjectAltName = DNS:$MYHOSTNAME"
-  mv tls.crt ${crt_file} 
-  mv tls.key ${key_file} 
+  mv tls.crt ${crt_file}
+  mv tls.key ${key_file}
 fi
 
 cd /etc/postfix/
@@ -54,12 +56,12 @@ init_dkim(){
       line="${dkim_selector}._domainkey.${dkim_domain} ${dkim_domain}:${dkim_selector}:/etc/opendkim/keys/${dkim_domain}/${dkim_selector}.private"
       if ! grep -Fxq "${line}" ${key_table_fp}; then
         echo "Adding to KeyTable: ${line}"
-        echo "${line}" | sudo tee -a ${key_table_fp} 
+        echo "${line}" | sudo tee -a ${key_table_fp}
       fi
       fp="/etc/opendkim/keys/${dkim_domain}/${dkim_selector}.private"
       if ! [ -f "${fp}" ]; then
         echo "Creating missing key ${dkim_selector}._domainkey.${dkim_domain}"
-        opendkim-genkey -D /etc/opendkim/keys/${dkim_domain} -s $dkim_selector -d ${dkim_domain} 
+        opendkim-genkey -D /etc/opendkim/keys/${dkim_domain} -s $dkim_selector -d ${dkim_domain}
       fi
       # sudo opendkim-testkey -d ${dkim_domain} -s ${dkim_selector} -vvv
     done
@@ -71,7 +73,7 @@ init_dkim(){
   sudo chmod 400 /etc/opendkim/keys/${dkim_domain}/$dkim_selector.private
   sudo chmod 444 /etc/opendkim/keys/${dkim_domain}/$dkim_selector.txt
   sudo chown -R opendkim:opendkim /etc/opendkim
-  # sudo chown -R root:opendkim /etc/opendkim/keys/ 
+  # sudo chown -R root:opendkim /etc/opendkim/keys/
 }
 # sudo chown -R postfix:postfix /var/spool/postfix
 
@@ -89,7 +91,7 @@ fi
 if [ -n "${HEADER_SIZE_LIMIT-}" ]; then
   postconf -e "header_size_limit = ${HEADER_SIZE_LIMIT}"
 else
-  postconf -e "header_size_limit = 5242880" #% 5MB 
+  postconf -e "header_size_limit = 5242880" #% 5MB
 fi
 
 if [ -n "${SMTPD_TLS_LOGLEVEL-}" ]; then
@@ -100,18 +102,18 @@ fi
 # postconf -e 'smtpd_tls_loglevel = 1'
 
 if [ -n "${SMTPD_TLS_SECURITY_LEVEL-}" ]; then
-  postconf -e "smtpd_tls_security_level = ${SMTPD_TLS_SECURITY_LEVEL}" 
+  postconf -e "smtpd_tls_security_level = ${SMTPD_TLS_SECURITY_LEVEL}"
 else
   # Allows the Postfix SMTP server announces STARTTLS support to remote SMTP clients,
   # but does not require that clients use TLS encryption.
-  postconf -e "smtpd_tls_security_level = may" 
+  postconf -e "smtpd_tls_security_level = may"
 fi
 
 if ! [ -n "${SMTP_TLS_SECURITY_LEVEL-}" ]; then
   # Requires tls encryption with outbound emails across the internet
-  postconf -e "smtp_tls_security_level = encrypt" 
+  postconf -e "smtp_tls_security_level = encrypt"
 else
-  postconf -e "smtp_tls_security_level = ${SMTP_TLS_SECURITY_LEVEL}" 
+  postconf -e "smtp_tls_security_level = ${SMTP_TLS_SECURITY_LEVEL}"
 fi
 
 postconf -e 'smtpd_sasl_local_domain = $myhostname'
@@ -121,6 +123,8 @@ postconf -e 'smtpd_sasl_security_options = noanonymous'
 postconf -e "mynetworks = \"${MYNETWORKS}\""
 postconf -e 'smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination'
 # smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+# Policy gray list
+# smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination, check_policy_service inet:127.0.0.1:10023
 postconf -e "myhostname = ${MYHOSTNAME}"
 postconf -e 'smtpd_tls_cert_file=/etc/ssl/certs/tls.crt'
 postconf -e 'smtpd_tls_key_file=/etc/ssl/private/tls.key'
@@ -151,8 +155,25 @@ postconf -e 'smtpd_tls_auth_only = yes'
 
 # postconf -e 'maillog_file = /dev/stdout'
 
+if [ ! -z ${DEFAULT_DESTINATION_RATE_DELAY+x} ]; then
+  # default_destination_rate_delay = 0.6s
+  postconf -e "default_destination_rate_delay = ${DEFAULT_DESTINATION_RATE_DELAY}"
+fi
+if [ ! -z ${INITIAL_DESTINATION_CONCURRENCY+x} ]; then
+  # initial_destination_concurrency = 1
+  postconf -e "initial_destination_concurrency = ${INITIAL_DESTINATION_CONCURRENCY}"
+fi
+
+if [ ! -z ${DEFAULT_DESTINATION_CONCURRENCY_LIMITY+x} ]; then
+  postconf -e "default_destination_concurrency_limit = ${DEFAULT_DESTINATION_RATE_DELAY}"
+fi
+if [ ! -z ${DEFAULT_DESTINATION_CONCURRENCY_LIMIT+x} ]; then
+  postconf -e "default_destination_concurrency_limit = ${DEFAULT_DESTINATION_CONCURRENCY_LIMIT}"
+fi
+
 # SENDER_DOMAINS="a.com b.com"
 if [ ! -z ${SENDER_DOMAINS+x} ]; then
+  echo -n "" > /etc/postfix/recipient_domains
   for i in ${SENDER_DOMAINS}; do
     echo "$i OK" >> /etc/postfix/sender_domains
     postmap /etc/postfix/sender_domains
@@ -160,12 +181,14 @@ if [ ! -z ${SENDER_DOMAINS+x} ]; then
   done
 fi
 if [ ! -z ${RECIPIENT_DOMAINS+x} ]; then
+  echo -n "" > /etc/postfix/recipient_domains
   for i in ${RECIPIENT_DOMAINS}; do
     echo "$i OK" >> /etc/postfix/recipient_domains
     postmap /etc/postfix/recipient_domains
     postconf -e "smtpd_recipient_restrictions = check_recipient_access hash:/etc/postfix/recipient_domains, reject_unauth_destination"
   done
 fi
+
 
 chroot_mods(){
   sudo mkdir -p /var/spool/postfix/etc
