@@ -1,0 +1,60 @@
+services:
+  image1a:
+    image: image1a
+    build: ./image1/src/
+    restart: always
+    # expose:
+    #   - 80
+    networks:
+      network1:
+        ipv4_address: 172.29.0.101
+    ports:
+      - "30011:80"
+
+  image1b:
+    image: image1b
+    build: ./image1/src/
+    restart: always
+    # expose:
+    #   - 80
+    networks:
+      network1:
+        ipv4_address: 172.29.0.102
+    ports:
+      - "30012:80"
+
+  haproxy:
+    container_name: haproxy
+    image: haproxy:2.9.9-bookworm
+    entrypoint: /bin/sh -c "/usr/local/sbin/haproxy -S 0.0.0.0:1234 -W -db -f /usr/local/etc/haproxy/haproxy.cfg"
+    user: root
+
+    restart: always
+    ports:
+      - "443:8443"
+      - "80:8080"
+    environment:
+      - RELOAD_DELAY=1.5              # seconds
+      - RELOAD_CONTAINER=haproxy
+    volumes:
+      - ./haproxy/haproxy.lua:/usr/local/etc/haproxy/haproxy.lua
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+      - ./haproxy/lua_scripts:/usr/local/etc/haproxy/lua_scripts
+      - ./haproxy/certs:/etc/ssl/certs
+    networks:
+      network1:
+        ipv4_address: 172.29.0.100
+    # links:
+    #  - app1
+    #  - app2
+
+    # expose:
+    #   - "443"
+
+networks:
+  network1:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/23
+          gateway: 172.29.0.1
