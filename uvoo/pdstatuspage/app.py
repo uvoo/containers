@@ -1,14 +1,46 @@
 #!/usr/bin/env python3
 import os
 import requests
-import sqlite3
 from flask import Flask, render_template, jsonify
 from datetime import datetime, timedelta
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 app = Flask(__name__)
 
 PAGERDUTY_API_TOKEN = os.getenv('PAGERDUTY_API_TOKEN')
 PAGERDUTY_SERVICES = os.getenv('PAGERDUTY_SERVICES').split(',')
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class Incident(Base):
+    __tablename__ = 'incidents'
+    id = Column(String, primary_key=True)
+    incident_number = Column(Integer)
+    title = Column(String)
+    description = Column(Text)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    status = Column(String)
+    incident_key = Column(String)
+    service_id = Column(String)
+    service_summary = Column(String)
+    assigned_via = Column(String)
+    last_status_change_at = Column(DateTime)
+    resolved_at = Column(DateTime)
+    first_trigger_log_entry_id = Column(String)
+    first_trigger_log_entry_summary = Column(String)
+    alert_counts_all = Column(Integer)
+    alert_counts_triggered = Column(Integer)
+    alert_counts_resolved = Column(Integer)
+    is_mergeable = Column(Boolean)
+    urgency = Column(String)
+    self = Column(String)
+    html_url = Column(String)
 
 def fetch_incidents(service_id):
     url = "https://api.pagerduty.com/incidents"
@@ -25,89 +57,50 @@ def fetch_incidents(service_id):
     return response.json().get('incidents', [])
 
 def init_db():
-    conn = sqlite3.connect('incidents.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS incidents (
-            id TEXT NOT NULL PRIMARY KEY,
-            incident_number INTEGER,
-            title TEXT,
-            description TEXT,
-            created_at DATETIME,
-            updated_at DATETIME,
-            status TEXT,
-            incident_key TEXT,
-            service_id TEXT,
-            service_summary TEXT,
-            assigned_via TEXT,
-            last_status_change_at DATETIME,
-            resolved_at DATETIME,
-            first_trigger_log_entry_id TEXT,
-            first_trigger_log_entry_summary TEXT,
-            alert_counts_all INTEGER,
-            alert_counts_triggered INTEGER,
-            alert_counts_resolved INTEGER,
-            is_mergeable BOOLEAN,
-            urgency TEXT,
-            self TEXT,
-            html_url TEXT
-        )
-    ''')
-    conn.commit()
-    return conn
+    Base.metadata.create_all(engine)
 
 def sync_incidents():
-    conn = init_db()
-    cursor = conn.cursor()
+    session = Session()
     for service_id in PAGERDUTY_SERVICES:
         incidents = fetch_incidents(service_id)
         for incident in incidents:
-            cursor.execute('''
-                INSERT OR REPLACE INTO incidents (
-                    id, incident_number, title, description, created_at, updated_at, status, incident_key, service_id, service_summary,
-                    assigned_via, last_status_change_at, resolved_at, first_trigger_log_entry_id, first_trigger_log_entry_summary,
-                    alert_counts_all, alert_counts_triggered, alert_counts_resolved, is_mergeable, urgency, self, html_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                incident['id'],
-                incident['incident_number'],
-                incident['title'],
-                incident.get('description', ''),
-                incident['created_at'],
-                incident['updated_at'],
-                incident['status'],
-                incident.get('incident_key', ''),
-                incident['service']['id'],
-                incident['service']['summary'],
-                incident.get('assigned_via', ''),
-                incident['last_status_change_at'],
-                incident.get('resolved_at', None),
-                incident['first_trigger_log_entry']['id'],
-                incident['first_trigger_log_entry']['summary'],
-                incident['alert_counts']['all'],
-                incident['alert_counts']['triggered'],
-                incident['alert_counts']['resolved'],
-                incident['is_mergeable'],
-                incident['urgency'],
-                incident['self'],
-                incident['html_url']
+            session.merge(Incident(
+                id=incident['id'],
+                incident_number=incident['incident_number'],
+                title=incident['title'],
+                description=incident.get('description', ''),
+                created_at=datetime.strptime(incident['created_at'], '%Y-%m-%dT%H:%M:%SZ'),
+                updated_at=datetime.strptime(incident['updated_at'], '%Y-%m-%dT%H:%M:%SZ'),
+                status=incident['status'],
+                incident_key=incident.get('incident_key', ''),
+                service_id=incident['service']['id'],
+                service_summary=incident['service']['summary'],
+                assigned_via=incident.get('assigned_via', ''),
+                last_status_change_at=datetime.strptime(incident['last_status_change_at'], '%Y-%m-%dT%H:%M:%SZ'),
+                resolved_at=datetime.strptime(incident['resolved_at'], '%Y-%m-%dT%H:%M:%SZ') if incident.get('resolved_at') else None,
+                first_trigger_log_entry_id=incident['first_trigger_log_entry']['id'],
+                first_trigger_log_entry_summary=incident['first_trigger_log_entry']['summary'],
+                alert_counts_all=incident['alert_counts']['all'],
+                alert_counts_triggered=incident['alert_counts']['triggered'],
+                alert_counts_resolved=incident['alert_counts']['resolved'],
+                is_mergeable=incident['is_mergeable'],
+                urgency=incident['urgency'],
+                self=incident['self'],
+                html_url=incident['html_url']
             ))
-    conn.commit()
-    conn.close()
+    session.commit()
+    session.close()
 
 def calculate_availability():
-    conn = sqlite3.connect('incidents.db')
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT created_at, resolved_at FROM incidents WHERE status != "resolved"')
-    incidents = cursor.fetchall()
+    session = Session()
+    incidents = session.query(Incident).filter(Incident.status != "resolved").all()
 
     total_downtime = 0
     total_time = 0
 
     for incident in incidents:
-        created_at = datetime.strptime(incident[0], '%Y-%m-%dT%H:%M:%SZ')
-        resolved_at = datetime.strptime(incident[1], '%Y-%m-%dT%H:%M:%SZ') if incident[1] else datetime.utcnow()
+        created_at = incident.created_at
+        resolved_at = incident.resolved_at if incident.resolved_at else datetime.utcnow()
         downtime = (resolved_at - created_at).total_seconds()
         total_downtime += downtime
 
@@ -115,7 +108,7 @@ def calculate_availability():
 
     availability = ((total_time - total_downtime) / total_time) * 100
 
-    conn.close()
+    session.close()
     return availability
 
 sync_incidents()
@@ -126,11 +119,9 @@ def index():
 
 @app.route('/api/incidents')
 def api_incidents():
-    conn = sqlite3.connect('incidents.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT created_at, COUNT(*) FROM incidents GROUP BY created_at')
-    data = cursor.fetchall()
-    conn.close()
+    session = Session()
+    data = session.query(Incident.created_at, func.count(Incident.id)).group_by(Incident.created_at).all()
+    session.close()
     return jsonify(data)
 
 @app.route('/api/availability')
@@ -138,23 +129,17 @@ def api_availability():
     availability = calculate_availability()
     return jsonify({"availability": availability})
 
-
 @app.route('/api/incident_status')
 def api_incident_status():
-    conn = sqlite3.connect('incidents.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT service_id, service_summary, id, created_at, resolved_at, status FROM incidents')
-    # cursor.execute('SELECT service_id, title, id, created_at, resolved_at, status FROM incidents')
-    incidents = cursor.fetchall()
-    conn.close()
+    session = Session()
+    incidents = session.query(Incident.service_id, Incident.service_summary, Incident.id, Incident.created_at, Incident.resolved_at, Incident.status).all()
+    session.close()
 
     service_status = {}
     for incident in incidents:
-        # service_id, service_title, incident_id, created_at, resolved_at, status = incident
         service_id, service_summary, incident_id, created_at, resolved_at, status = incident
         if service_id not in service_status:
             service_status[service_id] = {
-                # 'title': service_title,
                 'title': service_summary,
                 'incidents': []
             }
@@ -167,14 +152,11 @@ def api_incident_status():
 
     return jsonify(service_status)
 
-
 @app.route('/api/incident_status_by_day')
 def api_incident_status_by_day():
-    conn = sqlite3.connect('incidents.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT service_id, service_summary, created_at, status FROM incidents')
-    incidents = cursor.fetchall()
-    conn.close()
+    session = Session()
+    incidents = session.query(Incident.service_id, Incident.service_summary, Incident.created_at, Incident.status).all()
+    session.close()
 
     service_status_by_day = {}
     today = datetime.today()
@@ -182,7 +164,7 @@ def api_incident_status_by_day():
 
     for incident in incidents:
         service_id, service_title, created_at, status = incident
-        date = created_at.split('T')[0]
+        date = created_at.strftime('%Y-%m-%d')
         incident_date = datetime.strptime(date, '%Y-%m-%d')
         if incident_date < ninety_days_ago:
             continue
@@ -194,7 +176,6 @@ def api_incident_status_by_day():
             }
         if date not in service_status_by_day[service_id]['dates']:
             service_status_by_day[service_id]['dates'][date] = 0
-        # if status != 'resolved':
         if status in ['open', 'acknowledged', 'resolved']:
             service_status_by_day[service_id]['dates'][date] = 1
 
@@ -208,7 +189,6 @@ def api_incident_status_by_day():
             current_date += timedelta(days=1)
 
     return jsonify(service_status_by_day)
-
 
 if __name__ == '__main__':
     app.run(debug=True)
