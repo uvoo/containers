@@ -9,7 +9,7 @@ COPY app.py /app
 COPY index.html /app/templates
 
 # Install any needed packages specified in requirements.txt
-RUN pip install flask requests
+RUN pip install flask psycopg2-binary pymssql requests sqlalchemy sqlite3
 
 # Make port 80 available to the world outside this container
 EXPOSE 8080
