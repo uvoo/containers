@@ -9,12 +9,13 @@ services:
       - RELOAD_CONTAINER=haproxy
       # - DATABASE_URL="postgresql://username:password@hostname:port/database"
       # - DATABASE_URL="mssql+pymssql://username:password@hostname:port/database"
-      - DATABASE_URL="sqlite:///incidents.db"
-      - PAGERDUTY_API_TOKEN="mypdtoken"
-      - PAGERDUTY_SERVICES="myserviceid1,myserviceid2"
+      - DATABASE_URL=sqlite:///incidents.db
+      # - DATABASE_URL=sqlite:////app/incidents.db
+      - PAGERDUTY_API_TOKEN=mypdtoken
+      - PAGERDUTY_SERVICES=myserviceid1,myserviceid2
       - PAGERDUTY_SYNC_LAST_MINUTES=6000
       - PREVIOUS_DAYS=90
-      - LIMITER="5/minute"
-      - ALLOWED_CIDRS="192.168.1.0/24,10.0.0.0/8"
+      - LIMITER=5/minute
+      - ALLOWED_CIDRS=192.168.1.0/24,10.0.0.0/8
     # volumes:
-    #   - ./data:/data
+    #   - ./app:/app

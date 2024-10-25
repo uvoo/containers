@@ -5,20 +5,19 @@ from flask import Flask, abort, jsonify, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import sys
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Text, func
+from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
+import ipaddress
 
 app = Flask(__name__)
 
 PAGERDUTY_API_TOKEN = os.getenv('PAGERDUTY_API_TOKEN')
 PAGERDUTY_SERVICES = os.getenv('PAGERDUTY_SERVICES').split(',')
 DATABASE_URL = os.getenv('DATABASE_URL')
-LIMITER = os.getenv('LIMITER') 
+LIMITER = os.getenv('LIMITER')
 ALLOWED_CIDRS = os.getenv('ALLOWED_CIDRS')
 if ALLOWED_CIDRS:
-   ALLOWED_CIDRS_LIST = ALLOWED_CIDRS.split(',')
+    ALLOWED_CIDRS_LIST = ALLOWED_CIDRS.split(',')
 
 limiter = Limiter(
     get_remote_address,
@@ -27,9 +26,9 @@ limiter = Limiter(
 )
 
 engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
+session_factory = sessionmaker(bind=engine)
+Session = scoped_session(session_factory)
 Base = declarative_base()
-
 
 class Incident(Base):
     __tablename__ = 'incidents'
@@ -53,9 +52,7 @@ class Incident(Base):
     alert_counts_resolved = Column(Integer)
     is_mergeable = Column(Boolean)
     urgency = Column(String)
-    self = Column(String)
     html_url = Column(String)
-
 
 def fetch_incidents(service_id):
     url = "https://api.pagerduty.com/incidents"
@@ -63,8 +60,10 @@ def fetch_incidents(service_id):
         "Authorization": f"Token token={PAGERDUTY_API_TOKEN}",
         "Accept": "application/vnd.pagerduty+json;version=2"
     }
+    since = (datetime.utcnow() - timedelta(days=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
     params = {
         "service_ids[]": service_id,
+        "since": since,
         "statuses[]": ["triggered", "acknowledged", "resolved"]
     }
     response = requests.get(url, headers=headers, params=params)
@@ -100,7 +99,6 @@ def sync_incidents():
                 alert_counts_resolved=incident['alert_counts']['resolved'],
                 is_mergeable=incident['is_mergeable'],
                 urgency=incident['urgency'],
-                self=incident['self'],
                 html_url=incident['html_url']
             ))
     session.commit()
@@ -125,8 +123,6 @@ def calculate_availability():
 
     session.close()
     return availability
-
-sync_incidents()
 
 @app.route('/')
 def index():
@@ -211,4 +207,7 @@ def api_incident_status_by_day():
     return jsonify(service_status_by_day)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    init_db()
+    sync_incidents()
+    app.run(debug=True, host='0.0.0.0', port=8080)
+    # app.run(debug=True, host='0.0.0.0', port=8080, ssl_context='adhoc')
