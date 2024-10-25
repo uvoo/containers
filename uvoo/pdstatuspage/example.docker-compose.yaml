@@ -1,0 +1,18 @@
+services:
+  pdstatuspage:
+    image: uvoo/pdstatuspage
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - RELOAD_DELAY=1.5
+      - RELOAD_CONTAINER=haproxy
+      # - DATABASE_URL="postgresql://username:password@hostname:port/database"
+      # - DATABASE_URL="mssql+pymssql://username:password@hostname:port/database"
+      - DATABASE_URL="sqlite:///incidents.db"
+      - PAGERDUTY_API_TOKEN="mypdtoken"
+      - PAGERDUTY_SERVICES="myserviceid1,myserviceid2"
+      - PAGERDUTY_SYNC_LAST_MINUTES=6000
+      - PREVIOUS_DAYS=90
+    # volumes:
+    #   - ./data:/data
