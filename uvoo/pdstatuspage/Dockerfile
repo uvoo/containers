@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy the current directory contents into the container at /app
 COPY app.py /app
-COPY index.html /app/templates
+COPY index.html /app/templates/index.html
 
 # Install any needed packages specified in requirements.txt
 RUN pip install flask flask_limiter psycopg2-binary pymssql requests sqlalchemy
