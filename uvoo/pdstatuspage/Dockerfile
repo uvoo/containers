@@ -9,7 +9,7 @@ COPY app.py /app
 COPY index.html /app/templates
 
 # Install any needed packages specified in requirements.txt
-RUN pip install flask psycopg2-binary pymssql requests sqlalchemy
+RUN pip install flask flask_limiter psycopg2-binary pymssql requests sqlalchemy
 
 # Make port 80 available to the world outside this container
 EXPOSE 8080

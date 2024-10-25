@@ -14,5 +14,7 @@ services:
       - PAGERDUTY_SERVICES="myserviceid1,myserviceid2"
       - PAGERDUTY_SYNC_LAST_MINUTES=6000
       - PREVIOUS_DAYS=90
+      - LIMITER="5/minute"
+      - ALLOWED_CIDRS="192.168.1.0/24,10.0.0.0/8"
     # volumes:
     #   - ./data:/data
