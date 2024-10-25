@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 import os
 import requests
-from flask import Flask, render_template, jsonify
+from flask import Flask, abort, jsonify, render_template, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import sys
 
 app = Flask(__name__)
 
 PAGERDUTY_API_TOKEN = os.getenv('PAGERDUTY_API_TOKEN')
 PAGERDUTY_SERVICES = os.getenv('PAGERDUTY_SERVICES').split(',')
 DATABASE_URL = os.getenv('DATABASE_URL')
+LIMITER = os.getenv('LIMITER') 
+ALLOWED_CIDRS = os.getenv('ALLOWED_CIDRS')
+if ALLOWED_CIDRS:
+   ALLOWED_CIDRS_LIST = ALLOWED_CIDRS.split(',')
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
 
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
+
 
 class Incident(Base):
     __tablename__ = 'incidents'
@@ -41,6 +55,7 @@ class Incident(Base):
     urgency = Column(String)
     self = Column(String)
     html_url = Column(String)
+
 
 def fetch_incidents(service_id):
     url = "https://api.pagerduty.com/incidents"
@@ -130,7 +145,12 @@ def api_availability():
     return jsonify({"availability": availability})
 
 @app.route('/api/incident_status')
+@limiter.limit(LIMITER)
 def api_incident_status():
+    client_ip = request.remote_addr
+    if not any(ipaddress.ip_network(cidr).supernet_of(ipaddress.ip_network(client_ip)) for cidr in ALLOWED_CIDRS_LIST):
+        abort(403)
+
     session = Session()
     incidents = session.query(Incident.service_id, Incident.service_summary, Incident.id, Incident.created_at, Incident.resolved_at, Incident.status).all()
     session.close()
