@@ -13,6 +13,8 @@ PAGERDUTY_API_TOKEN = os.getenv('PAGERDUTY_API_TOKEN')
 PAGERDUTY_SERVICES = os.getenv('PAGERDUTY_SERVICES').split(',')
 LIMITER = os.getenv('LIMITER')
 ALLOWED_CIDRS = os.getenv('ALLOWED_CIDRS')
+INCIDENT_SEARCH_PERIOD_DAYS = int(os.getenv('INCIDENT_SEARCH_PERIOD_DAYS', 90))  # Default to 90 days if not set
+
 if ALLOWED_CIDRS:
     ALLOWED_CIDRS_LIST = ALLOWED_CIDRS.split(',')
 
@@ -28,7 +30,7 @@ def fetch_incidents(service_id):
         "Authorization": f"Token token={PAGERDUTY_API_TOKEN}",
         "Accept": "application/vnd.pagerduty+json;version=2"
     }
-    since = (datetime.utcnow() - timedelta(days=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    since = (datetime.utcnow() - timedelta(days=INCIDENT_SEARCH_PERIOD_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ')
     params = {
         "service_ids[]": service_id,
         "since": since,
@@ -40,7 +42,7 @@ def fetch_incidents(service_id):
 
 def calculate_availability(incidents):
     total_downtime = 0
-    total_time = 90 * 24 * 60 * 60  # 90 days in seconds
+    total_time = INCIDENT_SEARCH_PERIOD_DAYS * 24 * 60 * 60  # INCIDENT_SEARCH_PERIOD_DAYS in seconds
 
     for incident in incidents:
         created_at = datetime.strptime(incident['created_at'], '%Y-%m-%dT%H:%M:%SZ')
@@ -111,14 +113,14 @@ def api_incident_status_by_day():
 
     service_status_by_day = {}
     today = datetime.today()
-    ninety_days_ago = today - timedelta(days=90)
+    previous_days_ago = today - timedelta(days=INCIDENT_SEARCH_PERIOD_DAYS)
 
     for incident in all_incidents:
         service_id = incident['service']['id']
         service_summary = incident['service']['summary']
         date = incident['created_at'].split('T')[0]
         incident_date = datetime.strptime(date, '%Y-%m-%d')
-        if incident_date < ninety_days_ago:
+        if incident_date < previous_days_ago:
             continue
 
         if service_id not in service_status_by_day:
@@ -133,7 +135,7 @@ def api_incident_status_by_day():
 
     for service_id in service_status_by_day:
         dates = service_status_by_day[service_id]['dates']
-        current_date = ninety_days_ago
+        current_date = previous_days_ago
         while current_date <= today:
             date_str = current_date.strftime('%Y-%m-%d')
             if date_str not in dates:
