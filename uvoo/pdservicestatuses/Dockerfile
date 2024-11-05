@@ -1,0 +1,19 @@
+# Use the official Python image from the Docker Hub
+FROM python:3.9-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY app.py /app
+COPY index.html /app/templates/index.html
+
+# Install any needed packages specified in requirements.txt
+RUN pip install flask flask_limiter psycopg2-binary pymssql requests sqlalchemy
+# RUN pip install cryptography flask flask_limiter psycopg2-binary pymssql requests sqlalchemy
+
+# Make port 80 available to the world outside this container
+EXPOSE 8080
+
+# Run app.py when the container launches
+CMD ["python", "app.py"]
