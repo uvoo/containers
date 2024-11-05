@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Availability</title>
+    <!-- MDBootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/3.10.2/mdb.min.css" rel="stylesheet">
+    <!-- Highcharts CSS -->
+    <style>
+        .chart-container {
+            height: 250px;
+            max-width: 800px;
+            margin: 0 auto;
+            margin-bottom: 50px;
+        }
+        .spinner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 16px solid #f3f3f3;
+            border-top: 16px solid #3498db;
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <center> <h1 class="mb-4">Service Status by Day</h1>
+        Green bar means no incidents
+        </center>
+        <div id="charts"></div>
+        <div class="spinner" id="spinner"></div>
+    </div>
+    <!-- MDBootstrap JS -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/3.10.2/mdb.min.js"></script>
+    <!-- Highcharts JS -->
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        // Show the spinner
+        const spinner = document.getElementById('spinner');
+        spinner.style.display = 'block';
+
+        // Fetch and display incident status data by day
+        fetch('/api/incident_status_by_day')
+            .then(response => response.json())
+            .then(data => {
+                const chartsContainer = document.getElementById('charts');
+                Object.keys(data).forEach(serviceId => {
+                    const service = data[serviceId];
+                    const serviceTitle = service.title;
+                    const dates = service.dates;
+                    const categories = Object.keys(dates).sort();
+                    const seriesData = categories.map(date => ({
+                        y: 1,
+                        color: dates[date] === 1 ? 'red' : 'green'
+                    }));
+
+                    const chartDiv = document.createElement('div');
+                    chartDiv.className = 'chart-container';
+                    chartDiv.id = `chart-${serviceId}`;
+                    chartsContainer.appendChild(chartDiv);
+
+                    Highcharts.chart(chartDiv.id, {
+                        chart: {
+                            type: 'column'
+                        },
+                        title: {
+                            text: `Daily Status - ${serviceTitle} (${serviceId})`
+                        },
+                        xAxis: {
+                            categories: categories,
+                            title: {
+                                text: 'Date'
+                            }
+                        },
+                        yAxis: {
+                            min: 0,
+                            max: 1,
+                            title: {
+                                text: 'Status'
+                            },
+                            labels: {
+                                formatter: function () {
+                                    return this.value === 1 ? '' : '';
+                                }
+                            },
+                            tickPositions: [0, 1]
+                        },
+                        series: [{
+                            name: serviceTitle,
+                            data: seriesData
+                        }]
+                    });
+                });
+            })
+            .finally(() => {
+                // Hide the spinner
+                spinner.style.display = 'none';
+            });
+    </script>
+</body>
+</html>
