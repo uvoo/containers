@@ -1,19 +1,19 @@
 services:
   pdstatuspage:
-    image: uvoo/pdstatuspage
+    image: uvoo/pdservicestatues
     restart: always
     ports:
       - "8080:8080"
     environment:
       # - DATABASE_URL="postgresql://username:password@hostname:port/database"
       # - DATABASE_URL="mssql+pymssql://username:password@hostname:port/database"
-      - DATABASE_URL=sqlite:///incidents.db
+      # - DATABASE_URL=sqlite:///incidents.db
       # - DATABASE_URL=sqlite:////app/incidents.db
-      - PAGERDUTY_API_TOKEN=mypdtoken
-      - PAGERDUTY_SERVICES=myserviceid1,myserviceid2
+      - PD_API_TOKEN=mypdtoken # Required
+      - PD_SERVICES=myserviceid1,myserviceid2 # Required
+      - PD_INCIDENT_SEARCH_PERIOD_DAYS=90
+      - PD_SYNC_INTERVAL_SECONDS = os.getenv('PD_SYNC_INTERVAL_SECONDS', 600)
       - LIMITER=5/minute
       - ALLOWED_CIDRS=192.168.1.0/24,10.0.0.0/8
-      - INCIDENT_SEARCH_PERIOD_DAYS=90
-      # - PAGERDUTY_SYNC_LAST_MINUTES=6000
     # volumes:
     #   - ./app:/app

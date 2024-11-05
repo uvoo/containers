@@ -1,0 +1,8 @@
+apscheduler
+flask
+flask_limiter
+gunicorn
+psycopg2-binary
+pymssql
+requests
+sqlalchemy
