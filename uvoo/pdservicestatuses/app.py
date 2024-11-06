@@ -20,7 +20,12 @@ if  os.getenv('PD_SERVICES') is None:
 PD_API_TOKEN = os.getenv('PD_API_TOKEN')
 PD_SERVICES = os.getenv('PD_SERVICES').split(',')
 PD_SYNC_INTERVAL_SECONDS = os.getenv('PD_SYNC_INTERVAL_SECONDS', 600)
-PD_INCIDENT_SEARCH_PERIOD_DAYS = os.getenv('PD_INCIDENT_SEARCH_PERIOD_DAYS', 90)
+PD_INCIDENT_SEARCH_PERIOD_DAYS = os.getenv('PD_INCIDENT_SEARCH_PERIOD_DAYS', '90')
+try:
+    PD_INCIDENT_SEARCH_PERIOD_DAYS = int(PD_INCIDENT_SEARCH_PERIOD_DAYS)
+except ValueError:
+   print(f"Invalid value for PD_INCIDENT_SEARCH_PERIOD_DAYS: {PD_INCIDENT_SEARCH_PERIOD_DAYS}. Defaulting to 90 days.")
+   PD_INCIDENT_SEARCH_PERIOD_DAYS = 90 
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:////app/incidents.db')
 LIMITER = os.getenv('LIMITER', '10000/minute')
 ALLOWED_CIDRS = os.getenv('ALLOWED_CIDRS', '0.0.0.0/0')
@@ -69,7 +74,7 @@ def fetch_incidents(service_id):
         "Authorization": f"Token token={PD_API_TOKEN}",
         "Accept": "application/vnd.pagerduty+json;version=2"
     }
-    since = (datetime.utcnow() - timedelta(days=int(PD_INCIDENT_SEARCH_PERIOD_DAYS))).strftime('%Y-%m-%dT%H:%M:%SZ')
+    since = (datetime.utcnow() - timedelta(days=PD_INCIDENT_SEARCH_PERIOD_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ')
     params = {
         "service_ids[]": service_id,
         "since": since,
