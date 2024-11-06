@@ -69,7 +69,7 @@ def fetch_incidents(service_id):
         "Authorization": f"Token token={PD_API_TOKEN}",
         "Accept": "application/vnd.pagerduty+json;version=2"
     }
-    since = (datetime.utcnow() - timedelta(days=PD_INCIDENT_SEARCH_PERIOD_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    since = (datetime.utcnow() - timedelta(days=int(PD_INCIDENT_SEARCH_PERIOD_DAYS))).strftime('%Y-%m-%dT%H:%M:%SZ')
     params = {
         "service_ids[]": service_id,
         "since": since,
