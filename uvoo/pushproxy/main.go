@@ -35,8 +35,8 @@ type Users struct {
 // usersMap holds users keyed by username for quick lookup.
 var usersMap map[string]User
 
-var mimirURL *url.URL
-var mimirUsername, mimirPassword string
+var pushURL *url.URL
+var pushUsername, pushPassword string
 var httpClient *http.Client
 
 // getOrgID returns the org_id for a given username.
@@ -139,22 +139,22 @@ func main() {
 	}
 
 	// Set up connection parameters for the Mimir backend.
-	mimirURLStr := os.Getenv("MIMIR_URL")
-	if mimirURLStr == "" {
-		mimirURLStr = "https://examplemimir.example.com/api/v1/push"
+	pushURLStr := os.Getenv("PUSH_URL")
+	if pushURLStr == "" {
+		pushURLStr = "https://examplepush.example.com/api/v1/push"
 	}
-	mimirURL, err = url.Parse(mimirURLStr)
+	pushURL, err = url.Parse(pushURLStr)
 	if err != nil {
-		log.Fatalf("Invalid MIMIR_URL: %v", err)
+		log.Fatalf("Invalid PUSH_URL: %v", err)
 	}
 
-	mimirUsername = os.Getenv("MIMIR_USERNAME")
-	if mimirUsername == "" {
-		mimirUsername = "your_username"
+	pushUsername = os.Getenv("PUSH_USERNAME")
+	if pushUsername == "" {
+		pushUsername = "your_username"
 	}
-	mimirPassword = os.Getenv("MIMIR_PASSWORD")
-	if mimirPassword == "" {
-		mimirPassword = "your_password"
+	pushPassword = os.Getenv("PUSH_PASSWORD")
+	if pushPassword == "" {
+		pushPassword = "your_password"
 	}
 
 	httpClient = &http.Client{
@@ -203,7 +203,7 @@ func main() {
 
 		compressedData := snappy.Encode(nil, serialized)
 
-		backendReq, err := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), bytes.NewReader(compressedData))
+		backendReq, err := http.NewRequestWithContext(r.Context(), "POST", pushURL.String(), bytes.NewReader(compressedData))
 		if err != nil {
 			http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
 			log.Printf("Error creating backend request: %v", err)
@@ -211,7 +211,7 @@ func main() {
 		}
 		backendReq.Header.Set("Content-Type", "application/x-protobuf")
 		backendReq.Header.Set("Content-Encoding", "snappy")
-		backendReq.SetBasicAuth(mimirUsername, mimirPassword)
+		backendReq.SetBasicAuth(pushUsername, pushPassword)
 
 		if orgID != "" {
 			backendReq.Header.Set("X-Scope-OrgID", orgID)
@@ -220,7 +220,7 @@ func main() {
 		resp, err := httpClient.Do(backendReq)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to push to Mimir backend: %v", err), http.StatusBadGateway)
-			log.Printf("Error pushing to Mimir: %v, Mimir URL: %s", err, mimirURL.String())
+			log.Printf("Error pushing to Mimir: %v, Mimir URL: %s", err, pushURL.String())
 			return
 		}
 		defer resp.Body.Close()
@@ -228,7 +228,7 @@ func main() {
 		if resp.StatusCode >= 400 {
 			body, _ := io.ReadAll(resp.Body)
 			http.Error(w, fmt.Sprintf("Mimir returned error: %s (Status Code: %d)", string(body), resp.StatusCode), http.StatusBadGateway)
-			log.Printf("Mimir returned error: %s (Status Code: %d), Mimir URL: %s", string(body), resp.StatusCode, mimirURL.String())
+			log.Printf("Mimir returned error: %s (Status Code: %d), Mimir URL: %s", string(body), resp.StatusCode, pushURL.String())
 			return
 		}
 
