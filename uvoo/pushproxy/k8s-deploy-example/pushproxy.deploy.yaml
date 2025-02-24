@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushproxy-server
+  labels:
+    app: pushproxy-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pushproxy-server
+  template:
+    metadata:
+      labels:
+        app: pushproxy-server
+    spec:
+      containers:
+      - name: pushproxy-server
+        image: uvoo/pushproxy:latest
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - secretRef:
+            name: pushproxy-env
+        env:
+        - name: USER_SECRET_FILE
+          value: "/etc/secrets/users.yaml"
+        volumeMounts:
+        - name: users-secret-volume
+          mountPath: /etc/secrets
+          readOnly: true
+      volumes:
+      - name: users-secret-volume
+        secret:
+          secretName: pushproxy-auth-users
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushproxy-server
+spec:
+  selector:
+    app: pushproxy-server
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pushproxy-server-ingress
+  annotations: {}
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - pushproxy.example.com
+    secretName: pushproxy-tls
+  rules:
+  - host: pushproxy.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pushproxy-server
+            port:
+              number: 80
