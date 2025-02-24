@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pushproxy-env
+type: Opaque
+stringData:
+  PUSH_USERNAME: my-push-target-username 
+  PUSH_PASSWORD: my-push-target-password 
+  PUSH_URL: https://my-push-target.example.com/api/v1/push
+
