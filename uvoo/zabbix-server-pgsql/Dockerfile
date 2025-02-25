@@ -56,7 +56,7 @@ RUN set -eu \
   # sudo apt-get install -y unixodbc-dev \
 
 
-RUN pip3 install vonage
+# RUN pip3 install vonage
     # pip3 install --no-cache-dir gitfs
 # mkdir -p /var/lib/gitfs
 # end custom
