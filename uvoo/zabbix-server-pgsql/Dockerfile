@@ -36,24 +36,31 @@ RUN set -eux && \
 
 RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_URL} | sudo awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(/BEGIN CERTIFICATE/){a++}; out="/usr/local/share/ca-certificates/internalrootca"a".crt"; print >out}'; sudo update-ca-certificates; fi
 
-RUN curl -SL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
-RUN curl -SL https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+# MSSQL
+if ! [[ "18.04 20.04 22.04 24.04" == *"$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)"* ]];
+then
+    echo "Ubuntu $(grep VERSION_ID /etc/os-release | cut -d '"' -f 2) is not currently supported.";
+    exit;
+fi
 
-  # optional: for bcp and sqlcmd
-  # sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
-  # echo 'export PATH="/home/busk/.local/bin:/home/busk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/local/go/bin:/home/busk/.local/bin:/home/busk/go/bin:/opt/mssql-tools/bin"' >> ~/.bashrc
-  # source ~/.bashrc
-  # # optional: for unixODBC development headers
-  # sudo apt-get install -y unixodbc-dev
-RUN set -eux && \
-    apt-get -y update && \
-    ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
-    odbcinst \
-    odbcinst1debian2 \
-    unixodbc \
-    msodbcsql17
-    # build-essential \
-    # libssh2-1-dev \
+# Download the package to configure the Microsoft repo
+curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
+# Install the package
+sudo dpkg -i packages-microsoft-prod.deb
+# Delete the file
+rm packages-microsoft-prod.deb
+
+# Install the driver
+sudo apt-get update
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+# optional: for bcp and sqlcmd
+sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
+echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
+source ~/.bashrc
+# optional: for unixODBC development headers
+sudo apt-get install -y unixodbc-dev
+
+
 RUN pip3 install vonage
     # pip3 install --no-cache-dir gitfs
 # mkdir -p /var/lib/gitfs
