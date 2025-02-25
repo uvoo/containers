@@ -44,22 +44,16 @@ RUN if [[ -v INTERNAL_ROOTCA_CRTS_URL ]] ; then curl -s ${INTERNAL_ROOTCA_CRTS_U
 #     exit;
 # fi
 
-# Download the package to configure the Microsoft repo
-curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
-# Install the package
-sudo dpkg -i packages-microsoft-prod.deb
-# Delete the file
-rm packages-microsoft-prod.deb
-
-# Install the driver
-sudo apt-get update
-sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
-# optional: for bcp and sqlcmd
-sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
-echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
-source ~/.bashrc
-# optional: for unixODBC development headers
-sudo apt-get install -y unixodbc-dev
+RUN set -eu \
+  curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb \
+  sudo dpkg -i packages-microsoft-prod.deb \
+  rm packages-microsoft-prod.deb \
+  sudo apt-get update \
+  sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+  sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 \
+  echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
+  # source ~/.bashrc \
+  # sudo apt-get install -y unixodbc-dev \
 
 
 RUN pip3 install vonage
