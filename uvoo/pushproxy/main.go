@@ -2,15 +2,14 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
+	// "encoding/base64"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
-	"strings"
+	// "strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -39,7 +38,6 @@ var pushURL *url.URL
 var pushUsername, pushPassword string
 var httpClient *http.Client
 
-// getOrgID returns the org_id for a given username.
 func getOrgID(username string) (string, error) {
 	u, exists := usersMap[username]
 	if !exists {
@@ -48,81 +46,10 @@ func getOrgID(username string) (string, error) {
 	return u.OrgID, nil
 }
 
-// parseRawMetric parses a raw metric string, adds username and org_id labels,
-// and creates a Prometheus WriteRequest.
-func parseRawMetric(raw string, username string, orgID string) (*pb.WriteRequest, error) {
-	raw = strings.TrimSpace(raw)
-
-	idxOpen := strings.Index(raw, "{")
-	if idxOpen == -1 {
-		return nil, fmt.Errorf("invalid format: missing '{'")
-	}
-	idxClose := strings.Index(raw, "}")
-	if idxClose == -1 || idxClose < idxOpen {
-		return nil, fmt.Errorf("invalid format: missing '}'")
-	}
-
-	metricName := strings.TrimSpace(raw[:idxOpen])
-	labelPart := raw[idxOpen+1 : idxClose]
-	rest := strings.TrimSpace(raw[idxClose+1:])
-
-	parts := strings.Fields(rest)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid format: missing value or timestamp")
-	}
-
-	value, err := strconv.ParseFloat(parts[0], 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid metric value: %v", err)
-	}
-
-	tsSec, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp: %v", err)
-	}
-	timestamp := tsSec * 1000
-
-	labels := []pb.Label{{Name: "__name__", Value: metricName}}
-	labelPart = strings.TrimSpace(labelPart)
-	if labelPart != "" {
-		labelPairs := strings.Split(labelPart, ",")
-		for _, pair := range labelPairs {
-			pair = strings.TrimSpace(pair)
-			if pair == "" {
-				continue
-			}
-			kv := strings.SplitN(pair, "=", 2)
-			if len(kv) != 2 {
-				return nil, fmt.Errorf("invalid label format: %s", pair)
-			}
-			key := strings.TrimSpace(kv[0])
-			val := strings.Trim(strings.TrimSpace(kv[1]), "\"")
-			labels = append(labels, pb.Label{Name: key, Value: val})
-		}
-	}
-
-	// Add the username and org_id labels.
-	labels = append(labels, pb.Label{Name: "username", Value: username})
-	if orgID != "" {
-		labels = append(labels, pb.Label{Name: "org_id", Value: orgID})
-	}
-
-	ts := pb.TimeSeries{
-		Labels:  labels,
-		Samples: []pb.Sample{{Value: value, Timestamp: timestamp}},
-	}
-
-	writeReq := &pb.WriteRequest{
-		Timeseries: []pb.TimeSeries{ts},
-	}
-	return writeReq, nil
-}
-
 func main() {
-	// Load the Kubernetes secret (mounted as a YAML file) for user auth.
+	// Load user authentication details from YAML file.
 	usersFile := os.Getenv("USER_SECRET_FILE")
 	if usersFile == "" {
-		// Default path where the secret is mounted.
 		usersFile = "/etc/secrets/users.yaml"
 	}
 	data, err := os.ReadFile(usersFile)
@@ -138,7 +65,7 @@ func main() {
 		usersMap[u.Username] = u
 	}
 
-	// Set up connection parameters for the Mimir backend.
+	// Set up the push backend.
 	pushURLStr := os.Getenv("PUSH_URL")
 	if pushURLStr == "" {
 		pushURLStr = "https://examplepush.example.com/api/v1/push"
@@ -149,13 +76,7 @@ func main() {
 	}
 
 	pushUsername = os.Getenv("PUSH_USERNAME")
-	if pushUsername == "" {
-		pushUsername = "your_username"
-	}
 	pushPassword = os.Getenv("PUSH_PASSWORD")
-	if pushPassword == "" {
-		pushPassword = "your_password"
-	}
 
 	httpClient = &http.Client{
 		Timeout: 10 * time.Second,
@@ -173,100 +94,101 @@ func main() {
 			return
 		}
 
-		// Retrieve org_id from the in-memory users map.
 		orgID, err := getOrgID(username)
 		if err != nil {
 			http.Error(w, "Failed to retrieve org_id", http.StatusInternalServerError)
 			return
 		}
 
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		contentType := r.Header.Get("Content-Type")
+		var writeReq *pb.WriteRequest
+
+		if contentType == "application/x-protobuf" {
+			// Handle Protobuf-encoded data
+			compressedData, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+				return
+			}
+			r.Body.Close()
+
+			uncompressed, err := snappy.Decode(nil, compressedData)
+			if err != nil {
+				http.Error(w, "Failed to uncompress protobuf data", http.StatusBadRequest)
+				return
+			}
+
+			writeReq = &pb.WriteRequest{}
+			if err := proto.Unmarshal(uncompressed, writeReq); err != nil {
+				http.Error(w, "Failed to unmarshal protobuf message", http.StatusBadRequest)
+				return
+			}
+
+			// Add username and org_id labels to each time series.
+			for i := range writeReq.Timeseries {
+				writeReq.Timeseries[i].Labels = append(writeReq.Timeseries[i].Labels, pb.Label{Name: "username", Value: username})
+				if orgID != "" {
+					writeReq.Timeseries[i].Labels = append(writeReq.Timeseries[i].Labels, pb.Label{Name: "org_id", Value: orgID})
+				}
+			}
+
+			// Marshal the updated request back to protobuf
+			updatedData, err := proto.Marshal(writeReq)
+			if err != nil {
+				http.Error(w, "Failed to marshal updated protobuf data", http.StatusInternalServerError)
+				return
+			}
+
+			// Compress it again with Snappy
+			compressedData = snappy.Encode(nil, updatedData)
+
+			// Forward the request to the push backend
+			forwardRequest(w, compressedData, "application/x-protobuf")
+
+		} else {
+			http.Error(w, "Unsupported content type", http.StatusUnsupportedMediaType)
 			return
 		}
-		r.Body.Close()
-
-		writeReq, err := parseRawMetric(string(data), username, orgID)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to parse metric: %v", err), http.StatusBadRequest)
-			log.Printf("Error parsing metric: %v, Raw data: %s", err, string(data))
-			return
-		}
-
-		serialized, err := proto.Marshal(writeReq)
-		if err != nil {
-			http.Error(w, "Failed to marshal protobuf message", http.StatusInternalServerError)
-			log.Printf("Error marshaling protobuf: %v, WriteRequest: %+v", err, writeReq)
-			return
-		}
-
-		compressedData := snappy.Encode(nil, serialized)
-
-		backendReq, err := http.NewRequestWithContext(r.Context(), "POST", pushURL.String(), bytes.NewReader(compressedData))
-		if err != nil {
-			http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
-			log.Printf("Error creating backend request: %v", err)
-			return
-		}
-		backendReq.Header.Set("Content-Type", "application/x-protobuf")
-		backendReq.Header.Set("Content-Encoding", "snappy")
-		backendReq.SetBasicAuth(pushUsername, pushPassword)
-
-		if orgID != "" {
-			backendReq.Header.Set("X-Scope-OrgID", orgID)
-		}
-
-		resp, err := httpClient.Do(backendReq)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to push to Mimir backend: %v", err), http.StatusBadGateway)
-			log.Printf("Error pushing to Mimir: %v, Mimir URL: %s", err, pushURL.String())
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 400 {
-			body, _ := io.ReadAll(resp.Body)
-			http.Error(w, fmt.Sprintf("Mimir returned error: %s (Status Code: %d)", string(body), resp.StatusCode), http.StatusBadGateway)
-			log.Printf("Mimir returned error: %s (Status Code: %d), Mimir URL: %s", string(body), resp.StatusCode, pushURL.String())
-			return
-		}
-
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
 	})
 
-	log.Println("HTTP server running on :8080")
+	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// authenticate validates Basic Auth using the in-memory users map.
-func authenticate(r *http.Request) bool {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
-		return false
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
+// forwardRequest forwards the processed request to the push backend.
+func forwardRequest(w http.ResponseWriter, data []byte, contentType string) {
+	req, err := http.NewRequest("POST", pushURL.String(), bytes.NewBuffer(data))
 	if err != nil {
-		return false
+		http.Error(w, "Failed to create forward request", http.StatusInternalServerError)
+		return
 	}
+	req.SetBasicAuth(pushUsername, pushPassword)
+	req.Header.Set("Content-Type", contentType)
 
-	parts := strings.SplitN(string(decoded), ":", 2)
-	if len(parts) != 2 {
-		return false
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to forward request to backend", http.StatusInternalServerError)
+		return
 	}
+	defer resp.Body.Close()
 
-	username, password := parts[0], parts[1]
-	return validateUser(username, password)
+	body, _ := io.ReadAll(resp.Body)
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
 }
 
-// validateUser checks the provided credentials against the loaded users.
-func validateUser(username, password string) bool {
-	u, exists := usersMap[username]
-	if !exists {
+// authenticate checks if the request has valid credentials.
+func authenticate(r *http.Request) bool {
+	username, password, ok := r.BasicAuth()
+	if !ok {
 		return false
 	}
-	return password == u.Password
+
+	user, exists := usersMap[username]
+	if !exists || user.Password != password {
+		return false
+	}
+
+	return true
 }
 
