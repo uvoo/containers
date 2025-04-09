@@ -93,3 +93,96 @@ smtp      inet  n       -       n       -       -       smtpd
 ```
 smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination, check_policy_service inet:127.0.0.1:10023
 ```
+# More options example
+
+
+## run-docker.sh
+
+```
+# docker rm postfix -f || true
+sudo docker stop postfix || true
+sleep 5
+sudo docker rm postfix || true
+mkdir -p data
+cd data
+mkdir -p keys logs spool_postfix
+sudo chmod 0755 keys logs spool_postfix
+cd ../
+sudo docker run -p 587:8587 -p 25:8587 \
+  --dns=8.8.8.8 \
+  -e SMTP_USERS="internal@localhost:pass1 foo:pass2" \
+  -e MYNETWORKS="127.0.0.0/8 192.168.0.0/16" \
+  -e SENDER_DOMAINS="example.com" \
+  -e RECIPIENT_DOMAINS="example.com example.org" \
+  -e DKIM_DOMAINS="example.com" \
+  -e DKIM_SELECTORS="testrelay" \
+  -e MYHOSTNAME="testrelay.example.com" \
+  -e SMTP_TLS_SECURITY_LEVEL="may" \
+  -e DEFAULT_DESTINATION_RATE_DELAY="0s" \
+  -e INITIAL_DESTINATION_CONCURRENCY=3 \
+  -e DEFAULT_DESTINATION_CONCURRENCY_LIMIT=3 \
+  -e TLS_KEY="-----BEGIN PRIVATE KEY-----
+-----END PRIVATE KEY-----" \
+  -e TLS_CRT="-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----" \
+  -v ${PWD}/data/keys:/etc/opendkim/keys \
+  -v ${PWD}/data/logs:/var/log/mail\
+  -v ${PWD}/data/spool_postfix:/var/spool/postfix \
+  --hostname testrelay.example.com \
+  --name postfix -d postfix \
+  --restart always
+```
+
+## send-email.py
+
+```
+#!/usr/bin/python3
+import smtplib
+from email.mime.text import MIMEText
+
+from_addr = f"test-noreply@example.com"
+to_addr = f"toemail@example.com"
+to_addr = f"toemail@example.com"
+subject = "Test 1"
+body = "This is a test email."
+msg = MIMEText(body)
+msg["Subject"] = subject
+msg["From"] = from_addr
+msg["To"] = to_addr
+
+# server = smtplib.SMTP("localhost", 587)
+server = smtplib.SMTP("<ip>", 25)
+server.send_message(msg)
+server.quit()
+
+print("Email sent.")
+```
+
+## start-tls
+
+```
+#!/usr/bin/python3
+import smtplib
+from email.mime.text import MIMEText
+
+from_addr = f"noreply@example.com"
+to_addr = f"toemail@example.org"
+subject = "Test 587 1"
+body = "This is a test email."
+
+msg = MIMEText(body)
+msg["Subject"] = subject
+msg["From"] = from_addr
+msg["To"] = to_addr
+
+server = smtplib.SMTP("<my ip>", 587)
+server.starttls()
+server.send_message(msg)
+server.quit()
+
+print("Email sent.")
+```
