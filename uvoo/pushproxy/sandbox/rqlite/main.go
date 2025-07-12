@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
@@ -11,12 +12,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rqlite/gosql" // rqlite driver
 	pb "github.com/prometheus/prometheus/prompb"
 )
@@ -27,19 +31,67 @@ var (
 	mimirUsername string
 	mimirPassword string
 	httpClient    *http.Client
+	logLevel      = INFO
 )
+
+const (
+	DEBUG = iota
+	INFO
+	WARN
+	ERROR
+)
+
+func setLogLevelFromEnv() {
+	level := strings.ToUpper(os.Getenv("LOG_LEVEL"))
+	switch level {
+	case "DEBUG":
+		logLevel = DEBUG
+	case "INFO", "":
+		logLevel = INFO
+	case "WARN":
+		logLevel = WARN
+	case "ERROR":
+		logLevel = ERROR
+	default:
+		logLevel = INFO
+	}
+	log.Printf("[INFO] log level set to %s", level)
+}
+
+func logDebug(format string, v ...any) {
+	if logLevel <= DEBUG {
+		log.Printf("[DEBUG] "+format, v...)
+	}
+}
+
+func logInfo(format string, v ...any) {
+	if logLevel <= INFO {
+		log.Printf("[INFO] "+format, v...)
+	}
+}
+
+func logWarn(format string, v ...any) {
+	if logLevel <= WARN {
+		log.Printf("[WARN] "+format, v...)
+	}
+}
+
+func logError(format string, v ...any) {
+	if logLevel <= ERROR {
+		log.Printf("[ERROR] "+format, v...)
+	}
+}
 
 func buildRqliteDSN(baseURL, username, password string) string {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		log.Fatalf("Invalid RQLITE_URL: %v", err)
+		log.Fatalf("[ERROR] Invalid RQLITE_URL: %v", err)
 	}
 	u.User = url.UserPassword(username, password)
 
-	// add auth and disable_verify query params
 	q := u.Query()
 	q.Set("_auth", "")
-	q.Set("disable_verify", "") // for gosql this disables TLS verify if supported
+	q.Set("disable_verify", "")
 	u.RawQuery = q.Encode()
 	return u.String()
 }
@@ -58,12 +110,10 @@ func newInsecureHTTPClient() *http.Client {
 func openRqliteDB(dsn string, client *http.Client) *sql.DB {
 	connector, err := gosql.NewConnector(dsn)
 	if err != nil {
-		log.Fatalf("Failed to create rqlite connector: %v", err)
+		log.Fatalf("[ERROR] Failed to create rqlite connector: %v", err)
 	}
 
-	// inject the insecure client into connector
 	connector.Client = client
-
 	db := sql.OpenDB(connector)
 	return db
 }
@@ -144,47 +194,71 @@ func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
 	return writeReq, nil
 }
 
+func validateEnvVars(vars ...string) {
+	for _, v := range vars {
+		if os.Getenv(v) == "" {
+			log.Fatalf("[ERROR] Environment variable %s must be set", v)
+		}
+	}
+}
+
 func main() {
-	// insecure HTTP client for both rqlite & mimir
+	log.SetFlags(log.LstdFlags | log.LUTC)
+	setLogLevelFromEnv()
+
+	validateEnvVars("RQLITE_URL", "RQLITE_USERNAME", "RQLITE_PASSWORD", "MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
+
 	httpClient = newInsecureHTTPClient()
 
 	rqliteURL := os.Getenv("RQLITE_URL")
-	if rqliteURL == "" {
-		rqliteURL = "https://localhost:4001"
-	}
 	rqliteUser := os.Getenv("RQLITE_USERNAME")
 	rqlitePass := os.Getenv("RQLITE_PASSWORD")
-	if rqliteUser == "" || rqlitePass == "" {
-		log.Fatal("RQLITE_USERNAME and RQLITE_PASSWORD must be set")
-	}
+	mimirURLStr := os.Getenv("MIMIR_URL")
+	mimirUsername = os.Getenv("MIMIR_USERNAME")
+	mimirPassword = os.Getenv("MIMIR_PASSWORD")
 
 	dsn := buildRqliteDSN(rqliteURL, rqliteUser, rqlitePass)
 	db = openRqliteDB(dsn, httpClient)
 	defer db.Close()
 
-	mimirURLStr := os.Getenv("MIMIR_URL")
-	if mimirURLStr == "" {
-		mimirURLStr = "https://examplemimir.example.com/api/v1/push"
-	}
 	var err error
 	mimirURL, err = url.Parse(mimirURLStr)
 	if err != nil {
-		log.Fatalf("Invalid MIMIR_URL: %v", err)
+		log.Fatalf("[ERROR] Invalid MIMIR_URL: %v", err)
 	}
 
-	mimirUsername = os.Getenv("MIMIR_USERNAME")
-	if mimirUsername == "" {
-		mimirUsername = "your_username"
-	}
-	mimirPassword = os.Getenv("MIMIR_PASSWORD")
-	if mimirPassword == "" {
-		mimirPassword = "your_password"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/push", handlePush)
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
 
-	http.HandleFunc("/api/v1/push", handlePush)
+	// graceful shutdown
+	go func() {
+		logInfo("HTTP server running on :8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("[ERROR] HTTP server error: %v", err)
+		}
+	}()
 
-	log.Println("HTTP server running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	logInfo("Shutting down gracefully...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("[ERROR] Server forced to shutdown: %v", err)
+	}
+	logInfo("Server stopped.")
 }
 
 func handlePush(w http.ResponseWriter, r *http.Request) {
@@ -215,14 +289,14 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	writeReq, err := parseRawMetric(string(data), username, orgID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to parse metric: %v", err), http.StatusBadRequest)
-		log.Printf("Error parsing metric: %v, Raw data: %s", err, string(data))
+		logWarn("Error parsing metric: %v, Raw data: %s", err, string(data))
 		return
 	}
 
 	serialized, err := proto.Marshal(writeReq)
 	if err != nil {
 		http.Error(w, "Failed to marshal protobuf message", http.StatusInternalServerError)
-		log.Printf("Error marshaling protobuf: %v, WriteRequest: %+v", err, writeReq)
+		logError("Error marshaling protobuf: %v, WriteRequest: %+v", err, writeReq)
 		return
 	}
 
@@ -231,7 +305,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	backendReq, err := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), bytes.NewReader(compressedData))
 	if err != nil {
 		http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
-		log.Printf("Error creating backend request: %v", err)
+		logError("Error creating backend request: %v", err)
 		return
 	}
 	backendReq.Header.Set("Content-Type", "application/x-protobuf")
@@ -245,7 +319,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	resp, err := httpClient.Do(backendReq)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to push to Mimir backend: %v", err), http.StatusBadGateway)
-		log.Printf("Error pushing to Mimir: %v, Mimir URL: %s", err, mimirURL.String())
+		logError("Error pushing to Mimir: %v, Mimir URL: %s", err, mimirURL.String())
 		return
 	}
 	defer resp.Body.Close()
@@ -253,7 +327,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		http.Error(w, fmt.Sprintf("Mimir returned error: %s (Status Code: %d)", string(body), resp.StatusCode), http.StatusBadGateway)
-		log.Printf("Mimir returned error: %s (Status Code: %d), Mimir URL: %s", string(body), resp.StatusCode, mimirURL.String())
+		logError("Mimir returned error: %s (Status Code: %d), Mimir URL: %s", string(body), resp.StatusCode, mimirURL.String())
 		return
 	}
 
