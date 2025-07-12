@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,7 +36,17 @@ var (
 	mimirPassword string
 	httpClient    *http.Client
 	log           = logrus.New()
+
+	userCache   = make(map[string]User)
+	cacheMux    = &sync.RWMutex{}
+	cacheTTL    = 30 * time.Second // configurable
 )
+
+type User struct {
+	Username string
+	Password string
+	OrgID    string
+}
 
 func initLogger() {
 	levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
@@ -132,80 +143,55 @@ func openDB() *sql.DB {
 	}
 }
 
-func getOrgID(username string) (string, error) {
-	var orgID string
-	err := db.QueryRow("SELECT org_id FROM users WHERE username = ?", username).Scan(&orgID)
+func loadUserCache() {
+	log.Info("Loading user cache from DB...")
+	tmpCache := make(map[string]User)
+
+	rows, err := db.Query("SELECT username, password, org_id FROM users")
 	if err != nil {
-		return "", err
+		log.WithError(err).Error("failed to load user cache")
+		return
 	}
-	return orgID, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.Username, &u.Password, &u.OrgID); err != nil {
+			log.WithError(err).Error("failed to scan user row")
+			continue
+		}
+		tmpCache[u.Username] = u
+	}
+	if err := rows.Err(); err != nil {
+		log.WithError(err).Error("error reading rows")
+		return
+	}
+
+	cacheMux.Lock()
+	userCache = tmpCache
+	cacheMux.Unlock()
+
+	log.WithField("count", len(userCache)).Info("User cache loaded")
 }
 
-func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
-	raw = strings.TrimSpace(raw)
-
-	idxOpen := strings.Index(raw, "{")
-	if idxOpen == -1 {
-		return nil, fmt.Errorf("invalid format: missing '{'")
+func getOrgID(username string) (string, error) {
+	cacheMux.RLock()
+	defer cacheMux.RUnlock()
+	u, ok := userCache[username]
+	if !ok {
+		return "", fmt.Errorf("user not found")
 	}
-	idxClose := strings.Index(raw, "}")
-	if idxClose == -1 || idxClose < idxOpen {
-		return nil, fmt.Errorf("invalid format: missing '}'")
-	}
+	return u.OrgID, nil
+}
 
-	metricName := strings.TrimSpace(raw[:idxOpen])
-	labelPart := raw[idxOpen+1 : idxClose]
-	rest := strings.TrimSpace(raw[idxClose+1:])
-
-	parts := strings.Fields(rest)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid format: missing value or timestamp")
+func validateUser(username, password string) bool {
+	cacheMux.RLock()
+	defer cacheMux.RUnlock()
+	u, ok := userCache[username]
+	if !ok {
+		return false
 	}
-
-	value, err := strconv.ParseFloat(parts[0], 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid metric value: %v", err)
-	}
-
-	tsSec, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp: %v", err)
-	}
-	timestamp := tsSec * 1000
-
-	labels := []pb.Label{{Name: "__name__", Value: metricName}}
-	labelPart = strings.TrimSpace(labelPart)
-	if labelPart != "" {
-		labelPairs := strings.Split(labelPart, ",")
-		for _, pair := range labelPairs {
-			pair = strings.TrimSpace(pair)
-			if pair == "" {
-				continue
-			}
-			kv := strings.SplitN(pair, "=", 2)
-			if len(kv) != 2 {
-				return nil, fmt.Errorf("invalid label format: %s", pair)
-			}
-			key := strings.TrimSpace(kv[0])
-			val := strings.Trim(strings.TrimSpace(kv[1]), "\"")
-			labels = append(labels, pb.Label{Name: key, Value: val})
-		}
-	}
-
-	labels = append(labels, pb.Label{Name: "username", Value: username})
-	if orgID != "" {
-		labels = append(labels, pb.Label{Name: "org_id", Value: orgID})
-	}
-
-	ts := pb.TimeSeries{
-		Labels:  labels,
-		Samples: []pb.Sample{{Value: value, Timestamp: timestamp}},
-	}
-
-	writeReq := &pb.WriteRequest{
-		Timeseries: []pb.TimeSeries{ts},
-	}
-	return writeReq, nil
+	return u.Password == password
 }
 
 func validateEnvVars(vars ...string) {
@@ -218,6 +204,12 @@ func validateEnvVars(vars ...string) {
 
 func main() {
 	initLogger()
+
+	if ttlStr := os.Getenv("USER_CACHE_TTL"); ttlStr != "" {
+		if d, err := time.ParseDuration(ttlStr); err == nil {
+			cacheTTL = d
+		}
+	}
 
 	validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
 
@@ -232,6 +224,14 @@ func main() {
 
 	mimirUsername = os.Getenv("MIMIR_USERNAME")
 	mimirPassword = os.Getenv("MIMIR_PASSWORD")
+
+	// start user cache refresher
+	go func() {
+		for {
+			loadUserCache()
+			time.Sleep(cacheTTL)
+		}
+	}()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/push", handlePush)
@@ -348,6 +348,73 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
+func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
+	raw = strings.TrimSpace(raw)
+
+	idxOpen := strings.Index(raw, "{")
+	if idxOpen == -1 {
+		return nil, fmt.Errorf("invalid format: missing '{'")
+	}
+	idxClose := strings.Index(raw, "}")
+	if idxClose == -1 || idxClose < idxOpen {
+		return nil, fmt.Errorf("invalid format: missing '}'")
+	}
+
+	metricName := strings.TrimSpace(raw[:idxOpen])
+	labelPart := raw[idxOpen+1 : idxClose]
+	rest := strings.TrimSpace(raw[idxClose+1:])
+
+	parts := strings.Fields(rest)
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid format: missing value or timestamp")
+	}
+
+	value, err := strconv.ParseFloat(parts[0], 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid metric value: %v", err)
+	}
+
+	tsSec, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp: %v", err)
+	}
+	timestamp := tsSec * 1000
+
+	labels := []pb.Label{{Name: "__name__", Value: metricName}}
+	labelPart = strings.TrimSpace(labelPart)
+	if labelPart != "" {
+		labelPairs := strings.Split(labelPart, ",")
+		for _, pair := range labelPairs {
+			pair = strings.TrimSpace(pair)
+			if pair == "" {
+				continue
+			}
+			kv := strings.SplitN(pair, "=", 2)
+			if len(kv) != 2 {
+				return nil, fmt.Errorf("invalid label format: %s", pair)
+			}
+			key := strings.TrimSpace(kv[0])
+			val := strings.Trim(strings.TrimSpace(kv[1]), "\"")
+			labels = append(labels, pb.Label{Name: key, Value: val})
+		}
+	}
+
+	labels = append(labels, pb.Label{Name: "username", Value: username})
+	if orgID != "" {
+		labels = append(labels, pb.Label{Name: "org_id", Value: orgID})
+	}
+
+	ts := pb.TimeSeries{
+		Labels:  labels,
+		Samples: []pb.Sample{{Value: value, Timestamp: timestamp}},
+	}
+
+	writeReq := &pb.WriteRequest{
+		Timeseries: []pb.TimeSeries{ts},
+	}
+	return writeReq, nil
+}
+
 func authenticate(r *http.Request) bool {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
@@ -366,13 +433,4 @@ func authenticate(r *http.Request) bool {
 
 	username, password := parts[0], parts[1]
 	return validateUser(username, password)
-}
-
-func validateUser(username, password string) bool {
-	var storedPassword string
-	err := db.QueryRow("SELECT password FROM users WHERE username = ?", username).Scan(&storedPassword)
-	if err != nil {
-		return false
-	}
-	return password == storedPassword
 }
