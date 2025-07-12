@@ -23,6 +23,8 @@ import (
 	"github.com/rqlite/gosql"
 	"github.com/sirupsen/logrus"
 
+	_ "github.com/lib/pq"
+
 	pb "github.com/prometheus/prometheus/prompb"
 )
 
@@ -78,15 +80,56 @@ func newInsecureHTTPClient() *http.Client {
 	}
 }
 
-func openRqliteDB(dsn string, client *http.Client) *sql.DB {
-	connector, err := gosql.NewConnector(dsn)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to create rqlite connector")
+func openDB() *sql.DB {
+	dbDriver := strings.ToLower(os.Getenv("DB_DRIVER"))
+	if dbDriver == "" {
+		dbDriver = "rqlite"
 	}
 
-	connector.Client = client
-	db := sql.OpenDB(connector)
-	return db
+	httpClient = newInsecureHTTPClient()
+
+	switch dbDriver {
+	case "postgres", "postgresql":
+		validateEnvVars("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
+		host := os.Getenv("POSTGRES_HOST")
+		port := os.Getenv("POSTGRES_PORT")
+		dbname := os.Getenv("POSTGRES_DB")
+		user := os.Getenv("POSTGRES_USER")
+		pass := os.Getenv("POSTGRES_PASSWORD")
+		sslmode := os.Getenv("POSTGRES_SSLMODE")
+		if sslmode == "" {
+			sslmode = "disable"
+		}
+
+		dsn := fmt.Sprintf(
+			"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
+			host, port, dbname, user, pass, sslmode,
+		)
+
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			log.WithError(err).Fatal("failed to connect to PostgreSQL")
+		}
+		log.WithField("driver", "postgres").Info("connected to PostgreSQL")
+		return db
+
+	case "rqlite":
+		validateEnvVars("RQLITE_URL", "RQLITE_USERNAME", "RQLITE_PASSWORD")
+		dsn := buildRqliteDSN(os.Getenv("RQLITE_URL"), os.Getenv("RQLITE_USERNAME"), os.Getenv("RQLITE_PASSWORD"))
+
+		connector, err := gosql.NewConnector(dsn)
+		if err != nil {
+			log.WithError(err).Fatal("failed to create rqlite connector")
+		}
+		connector.Client = httpClient
+		db := sql.OpenDB(connector)
+		log.WithField("driver", "rqlite").Info("connected to rqlite")
+		return db
+
+	default:
+		log.WithField("DB_DRIVER", dbDriver).Fatal("unsupported DB_DRIVER")
+		return nil
+	}
 }
 
 func getOrgID(username string) (string, error) {
@@ -176,26 +219,19 @@ func validateEnvVars(vars ...string) {
 func main() {
 	initLogger()
 
-	validateEnvVars("RQLITE_URL", "RQLITE_USERNAME", "RQLITE_PASSWORD", "MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
+	validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
 
-	httpClient = newInsecureHTTPClient()
-
-	rqliteURL := os.Getenv("RQLITE_URL")
-	rqliteUser := os.Getenv("RQLITE_USERNAME")
-	rqlitePass := os.Getenv("RQLITE_PASSWORD")
-	mimirURLStr := os.Getenv("MIMIR_URL")
-	mimirUsername = os.Getenv("MIMIR_USERNAME")
-	mimirPassword = os.Getenv("MIMIR_PASSWORD")
-
-	dsn := buildRqliteDSN(rqliteURL, rqliteUser, rqlitePass)
-	db = openRqliteDB(dsn, httpClient)
+	db = openDB()
 	defer db.Close()
 
 	var err error
-	mimirURL, err = url.Parse(mimirURLStr)
+	mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
 	if err != nil {
 		log.WithError(err).Fatal("Invalid MIMIR_URL")
 	}
+
+	mimirUsername = os.Getenv("MIMIR_USERNAME")
+	mimirPassword = os.Getenv("MIMIR_PASSWORD")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/push", handlePush)
