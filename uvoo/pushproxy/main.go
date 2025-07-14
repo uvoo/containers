@@ -97,6 +97,7 @@ func main() {
         go cacheRefresher()
 
         mux := http.NewServeMux()
+        mux.HandleFunc("/prometheus", handlePrometheusQuery)
         mux.HandleFunc("/api/v1/push", handlePush)
         mux.Handle("/metrics", promhttp.Handler())
         mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +203,67 @@ func (r *RqliteStore) LoadAll() (map[string]User, error) {
 
         return tmp, nil
 }
+
+
+func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
+        if !authenticate(r) {
+                http.Error(w, "Unauthorized", http.StatusUnauthorized)
+                return
+        }
+
+        username, _, ok := r.BasicAuth()
+        if !ok {
+                http.Error(w, "Unauthorized", http.StatusUnauthorized)
+                return
+        }
+
+        orgID, err := getOrgID(username)
+        if err != nil {
+                http.Error(w, "Failed to retrieve org_id", http.StatusInternalServerError)
+                return
+        }
+
+        // Build backend URL pointing to /prometheus
+        backendURL := *mimirURL // copy
+        backendURL.Path = "/prometheus"
+        backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendURL.String(), r.Body)
+        if err != nil {
+                http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
+                log.WithError(err).Error("error creating backend request")
+                return
+        }
+
+        backendReq.Header = r.Header.Clone() // copy incoming headers
+        backendReq.SetBasicAuth(mimirUser, mimirPass)
+
+        if orgID != "" {
+                backendReq.Header.Set("X-Scope-OrgID", orgID)
+        }
+
+        resp, err := httpClient.Do(backendReq)
+        if err != nil {
+                http.Error(w, fmt.Sprintf("Failed to query Mimir backend: %v", err), http.StatusBadGateway)
+                log.WithError(err).Error("error querying Mimir")
+                return
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode >= 400 {
+                body, _ := io.ReadAll(resp.Body)
+                http.Error(w, fmt.Sprintf("Mimir returned error: %s (Status Code: %d)", string(body), resp.StatusCode), http.StatusBadGateway)
+                log.WithFields(logrus.Fields{
+                        "status":   resp.StatusCode,
+                        "body":     string(body),
+                        "username": username,
+                        "org_id":   orgID,
+                }).Error("Mimir returned error on /prometheus query")
+                return
+        }
+
+        w.WriteHeader(resp.StatusCode)
+        io.Copy(w, resp.Body)
+}
+
 
 func handlePush(w http.ResponseWriter, r *http.Request) {
         if !authenticate(r) {
