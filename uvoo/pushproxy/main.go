@@ -484,36 +484,68 @@ func validateEnvVars(vars ...string) {
 }
 
 func openStore() UserStore {
-        dbDriver := strings.ToLower(os.Getenv("DB_DRIVER"))
-        if dbDriver == "" {
-                dbDriver = "postgres"
-        }
-        if dbDriver == "postgres" {
-                validateEnvVars("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
-                dsn := fmt.Sprintf(
-                        "host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
-                        os.Getenv("POSTGRES_HOST"),
-                        os.Getenv("POSTGRES_PORT"),
-                        os.Getenv("POSTGRES_DB"),
-                        os.Getenv("POSTGRES_USER"),
-                        os.Getenv("POSTGRES_PASSWORD"),
-                )
-                db, err := sql.Open("postgres", dsn)
-                if err != nil {
-                        log.WithError(err).Fatal("failed to connect to Postgres")
-                }
-                log.Info("Connected to Postgres")
-                return &PostgresStore{db: db}
-        } else if dbDriver == "rqlite" {
-                validateEnvVars("RQLITE_URL")
-                conn, err := gorqlite.Open(os.Getenv("RQLITE_URL"))
-                if err != nil {
-                        log.WithError(err).Fatal("failed to connect to rqlite")
-                }
-                log.Info("Connected to rqlite")
-                return &RqliteStore{conn: conn}
-        } else {
-                log.Fatalf("Unsupported DB_DRIVER: %s", dbDriver)
-        }
-        return nil
+	dbDriver := strings.ToLower(os.Getenv("DB_DRIVER"))
+	if dbDriver == "" {
+		dbDriver = "postgres"
+	}
+
+	if dbDriver == "postgres" {
+		validateEnvVars("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
+		dsn := fmt.Sprintf(
+			"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+			os.Getenv("POSTGRES_HOST"),
+			os.Getenv("POSTGRES_PORT"),
+			os.Getenv("POSTGRES_DB"),
+			os.Getenv("POSTGRES_USER"),
+			os.Getenv("POSTGRES_PASSWORD"),
+		)
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			log.WithError(err).Fatal("failed to connect to Postgres")
+		}
+		log.Info("Connected to Postgres")
+
+		// Ensure table exists
+		_, err = db.Exec(`
+			CREATE TABLE IF NOT EXISTS users (
+				username TEXT PRIMARY KEY,
+				password TEXT NOT NULL,
+				org_id TEXT
+			)
+		`)
+		if err != nil {
+			log.WithError(err).Fatal("failed to create users table in Postgres")
+		}
+		log.Info("Ensured users table exists in Postgres")
+
+		return &PostgresStore{db: db}
+	}
+
+	if dbDriver == "rqlite" {
+		validateEnvVars("RQLITE_URL")
+		conn, err := gorqlite.Open(os.Getenv("RQLITE_URL"))
+		if err != nil {
+			log.WithError(err).Fatal("failed to connect to rqlite")
+		}
+		log.Info("Connected to rqlite")
+
+		// Ensure table exists
+		_, err = conn.WriteOne(`
+			CREATE TABLE IF NOT EXISTS users (
+				username TEXT PRIMARY KEY,
+				password TEXT NOT NULL,
+				org_id TEXT
+			)
+		`)
+		if err != nil {
+			log.WithError(err).Fatal("failed to create users table in rqlite")
+		}
+		log.Info("Ensured users table exists in rqlite")
+
+		return &RqliteStore{conn: conn}
+	}
+
+	log.Fatalf("Unsupported DB_DRIVER: %s", dbDriver)
+	return nil
 }
+
