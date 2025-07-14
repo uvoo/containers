@@ -3,6 +3,7 @@ package main
 import (
         "bytes"
         "context"
+        "crypto/tls"
         "database/sql"
         "encoding/base64"
         "fmt"
@@ -33,7 +34,7 @@ var (
         mimirURL   *url.URL
         mimirUser  string
         mimirPass  string
-        httpClient = &http.Client{}
+        httpClient *http.Client
         log        = logrus.New()
 
         userCache = make(map[string]User)
@@ -57,6 +58,112 @@ type PostgresStore struct {
 
 type RqliteStore struct {
         conn *gorqlite.Connection
+}
+
+func main() {
+        initLogger()
+        validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
+        store = openStore()
+
+        var err error
+        mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
+        if err != nil {
+                log.WithError(err).Fatal("Invalid MIMIR_URL")
+        }
+        mimirUser = os.Getenv("MIMIR_USERNAME")
+        mimirPass = os.Getenv("MIMIR_PASSWORD")
+
+        // setup HTTP client
+        if os.Getenv("BACKEND_SKIP_TLS_VERIFY") == "true" {
+                log.Warn("BACKEND_SKIP_TLS_VERIFY is true — skipping TLS verification for backend requests!")
+                httpClient = &http.Client{
+                        Timeout: 30 * time.Second,
+                        Transport: &http.Transport{
+                                TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+                        },
+                }
+        } else {
+                httpClient = &http.Client{
+                        Timeout: 30 * time.Second,
+                }
+        }
+
+        if ttlStr := os.Getenv("USER_CACHE_TTL"); ttlStr != "" {
+                if d, err := time.ParseDuration(ttlStr); err == nil {
+                        cacheTTL = d
+                }
+        }
+
+        go cacheRefresher()
+
+        mux := http.NewServeMux()
+        mux.HandleFunc("/api/v1/push", handlePush)
+        mux.Handle("/metrics", promhttp.Handler())
+        mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+                w.WriteHeader(http.StatusOK)
+                w.Write([]byte("ok"))
+        })
+
+        srv := &http.Server{
+                Addr:    ":8080",
+                Handler: mux,
+        }
+
+        go func() {
+                log.WithField("addr", srv.Addr).Info("HTTP server running")
+                if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+                        log.WithError(err).Fatal("HTTP server error")
+                }
+        }()
+
+        stop := make(chan os.Signal, 1)
+        signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+        <-stop
+        log.Info("Shutting down gracefully...")
+
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        if err := srv.Shutdown(ctx); err != nil {
+                log.WithError(err).Fatal("Server forced to shutdown")
+        }
+        log.Info("Server stopped.")
+}
+
+func cacheRefresher() {
+        for {
+                loadUserCache()
+                time.Sleep(cacheTTL)
+        }
+}
+
+func loadUserCache() {
+        log.Info("Loading user cache...")
+        tmp, err := store.LoadAll()
+        if err != nil {
+                log.WithError(err).Error("Failed to load user cache")
+                return
+        }
+        cacheMux.Lock()
+        userCache = tmp
+        cacheMux.Unlock()
+        log.WithField("count", len(userCache)).Info("User cache refreshed")
+}
+
+func validateUser(username, password string) bool {
+        cacheMux.RLock()
+        defer cacheMux.RUnlock()
+        u, ok := userCache[username]
+        return ok && u.Password == password
+}
+
+func getOrgID(username string) (string, error) {
+        cacheMux.RLock()
+        defer cacheMux.RUnlock()
+        u, ok := userCache[username]
+        if !ok {
+                return "", fmt.Errorf("user not found")
+        }
+        return u.OrgID, nil
 }
 
 func (p *PostgresStore) LoadAll() (map[string]User, error) {
@@ -96,157 +203,6 @@ func (r *RqliteStore) LoadAll() (map[string]User, error) {
         return tmp, nil
 }
 
-func initLogger() {
-        levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
-        if levelStr == "" {
-                levelStr = "info"
-        }
-        level, err := logrus.ParseLevel(levelStr)
-        if err != nil {
-                level = logrus.InfoLevel
-        }
-        log.SetLevel(level)
-        log.SetFormatter(&logrus.JSONFormatter{
-                TimestampFormat: time.RFC3339,
-        })
-        log.SetOutput(os.Stdout)
-        log.WithField("level", level).Info("log level set")
-}
-
-func validateEnvVars(vars ...string) {
-        for _, v := range vars {
-                if os.Getenv(v) == "" {
-                        log.WithField("var", v).Fatal("Environment variable must be set")
-                }
-        }
-}
-
-func openStore() UserStore {
-        dbDriver := strings.ToLower(os.Getenv("DB_DRIVER"))
-        if dbDriver == "" {
-                dbDriver = "rqlite"
-        }
-        if dbDriver == "postgres" {
-                validateEnvVars("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
-                dsn := fmt.Sprintf(
-                        "host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
-                        os.Getenv("POSTGRES_HOST"),
-                        os.Getenv("POSTGRES_PORT"),
-                        os.Getenv("POSTGRES_DB"),
-                        os.Getenv("POSTGRES_USER"),
-                        os.Getenv("POSTGRES_PASSWORD"),
-                )
-                db, err := sql.Open("postgres", dsn)
-                if err != nil {
-                        log.WithError(err).Fatal("failed to connect to Postgres")
-                }
-                log.Info("Connected to Postgres")
-                return &PostgresStore{db: db}
-        } else if dbDriver == "rqlite" {
-                validateEnvVars("RQLITE_URL")
-                conn, err := gorqlite.Open(os.Getenv("RQLITE_URL"))
-                if err != nil {
-                        log.WithError(err).Fatal("failed to connect to rqlite")
-                }
-                log.Info("Connected to rqlite")
-                return &RqliteStore{conn: conn}
-        } else {
-                log.Fatalf("Unsupported DB_DRIVER: %s", dbDriver)
-        }
-        return nil
-}
-
-func loadUserCache() {
-        log.Info("Loading user cache...")
-        tmp, err := store.LoadAll()
-        if err != nil {
-                log.WithError(err).Error("Failed to load user cache")
-                return
-        }
-        cacheMux.Lock()
-        userCache = tmp
-        cacheMux.Unlock()
-        log.WithField("count", len(userCache)).Info("User cache refreshed")
-}
-
-func validateUser(username, password string) bool {
-        cacheMux.RLock()
-        defer cacheMux.RUnlock()
-        u, ok := userCache[username]
-        return ok && u.Password == password
-}
-
-func getOrgID(username string) (string, error) {
-        cacheMux.RLock()
-        defer cacheMux.RUnlock()
-        u, ok := userCache[username]
-        if !ok {
-                return "", fmt.Errorf("user not found")
-        }
-        return u.OrgID, nil
-}
-
-func main() {
-        initLogger()
-
-        if ttlStr := os.Getenv("USER_CACHE_TTL"); ttlStr != "" {
-                if d, err := time.ParseDuration(ttlStr); err == nil {
-                        cacheTTL = d
-                }
-        }
-
-        validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
-
-        store = openStore()
-
-        var err error
-        mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
-        if err != nil {
-                log.WithError(err).Fatal("Invalid MIMIR_URL")
-        }
-        mimirUser = os.Getenv("MIMIR_USERNAME")
-        mimirPass = os.Getenv("MIMIR_PASSWORD")
-
-        go func() {
-                for {
-                        loadUserCache()
-                        time.Sleep(cacheTTL)
-                }
-        }()
-
-        mux := http.NewServeMux()
-        mux.HandleFunc("/api/v1/push", handlePush)
-        mux.Handle("/metrics", promhttp.Handler())
-        mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-                w.WriteHeader(http.StatusOK)
-                w.Write([]byte("ok"))
-        })
-
-        srv := &http.Server{
-                Addr:    ":8080",
-                Handler: mux,
-        }
-
-        go func() {
-                log.WithField("addr", srv.Addr).Info("HTTP server running")
-                if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-                        log.WithError(err).Fatal("HTTP server error")
-                }
-        }()
-
-        stop := make(chan os.Signal, 1)
-        signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-        <-stop
-        log.Info("Shutting down gracefully...")
-
-        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer cancel()
-        if err := srv.Shutdown(ctx); err != nil {
-                log.WithError(err).Fatal("Server forced to shutdown")
-        }
-        log.Info("Server stopped.")
-}
-
 func handlePush(w http.ResponseWriter, r *http.Request) {
         if !authenticate(r) {
                 http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -272,24 +228,37 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
         }
         defer r.Body.Close()
 
-        writeReq, err := parseRawMetric(string(data), username, orgID)
-        if err != nil {
-                http.Error(w, fmt.Sprintf("Failed to parse metric: %v", err), http.StatusBadRequest)
-                log.WithFields(logrus.Fields{
-                        "err":      err,
-                        "raw_data": string(data),
-                }).Warn("failed to parse metric")
-                return
-        }
+        var (
+                compressedData []byte
+                contentType    string
+        )
 
-        serialized, err := proto.Marshal(writeReq)
-        if err != nil {
-                http.Error(w, "Failed to marshal protobuf message", http.StatusInternalServerError)
-                log.WithError(err).Error("error marshaling protobuf")
-                return
-        }
+        if isLikelyText(data) {
+                log.Info("Received text/plain metric, parsing…")
+                writeReq, err := parseRawMetric(string(data), username, orgID)
+                if err != nil {
+                        http.Error(w, fmt.Sprintf("Failed to parse metric: %v", err), http.StatusBadRequest)
+                        log.WithFields(logrus.Fields{
+                                "err":      err,
+                                "raw_data": string(data),
+                        }).Warn("failed to parse metric")
+                        return
+                }
 
-        compressedData := snappy.Encode(nil, serialized)
+                serialized, err := proto.Marshal(writeReq)
+                if err != nil {
+                        http.Error(w, "Failed to marshal protobuf message", http.StatusInternalServerError)
+                        log.WithError(err).Error("error marshaling protobuf")
+                        return
+                }
+
+                compressedData = snappy.Encode(nil, serialized)
+                contentType = "text/plain"
+        } else {
+                log.Info("Received snappy/protobuf metric, forwarding as-is…")
+                compressedData = data
+                contentType = "application/x-protobuf"
+        }
 
         backendReq, err := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), bytes.NewReader(compressedData))
         if err != nil {
@@ -297,8 +266,8 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
                 log.WithError(err).Error("error creating backend request")
                 return
         }
-        backendReq.Header.Set("Content-Type", "application/x-protobuf")
         backendReq.Header.Set("Content-Encoding", "snappy")
+        backendReq.Header.Set("Content-Type", contentType)
         backendReq.SetBasicAuth(mimirUser, mimirPass)
 
         if orgID != "" {
@@ -355,14 +324,12 @@ func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
                 return nil, fmt.Errorf("invalid metric value: %v", err)
         }
 
-        tsSec, err := strconv.ParseInt(parts[1], 10, 64)
+        timestamp, err := strconv.ParseInt(parts[1], 10, 64)
         if err != nil {
                 return nil, fmt.Errorf("invalid timestamp: %v", err)
         }
-        timestamp := tsSec * 1000
 
         labels := []pb.Label{{Name: "__name__", Value: metricName}}
-        labelPart = strings.TrimSpace(labelPart)
         if labelPart != "" {
                 labelPairs := strings.Split(labelPart, ",")
                 for _, pair := range labelPairs {
@@ -390,10 +357,9 @@ func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
                 Samples: []pb.Sample{{Value: value, Timestamp: timestamp}},
         }
 
-        writeReq := &pb.WriteRequest{
+        return &pb.WriteRequest{
                 Timeseries: []pb.TimeSeries{ts},
-        }
-        return writeReq, nil
+        }, nil
 }
 
 func authenticate(r *http.Request) bool {
@@ -414,4 +380,78 @@ func authenticate(r *http.Request) bool {
 
         username, password := parts[0], parts[1]
         return validateUser(username, password)
+}
+
+func isLikelyText(data []byte) bool {
+        max := len(data)
+        if max > 512 {
+                max = 512
+        }
+        for i := 0; i < max; i++ {
+                c := data[i]
+                if (c < 32 && c != 9 && c != 10 && c != 13) || c > 126 {
+                        return false
+                }
+        }
+        return true
+}
+
+func initLogger() {
+        levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
+        if levelStr == "" {
+                levelStr = "info"
+        }
+        level, err := logrus.ParseLevel(levelStr)
+        if err != nil {
+                level = logrus.InfoLevel
+        }
+        log.SetLevel(level)
+        log.SetFormatter(&logrus.JSONFormatter{
+                TimestampFormat: time.RFC3339,
+        })
+        log.SetOutput(os.Stdout)
+        log.WithField("level", level).Info("log level set")
+}
+
+func validateEnvVars(vars ...string) {
+        for _, v := range vars {
+                if os.Getenv(v) == "" {
+                        log.WithField("var", v).Fatal("Environment variable must be set")
+                }
+        }
+}
+
+func openStore() UserStore {
+        dbDriver := strings.ToLower(os.Getenv("DB_DRIVER"))
+        if dbDriver == "" {
+                dbDriver = "postgres"
+        }
+        if dbDriver == "postgres" {
+                validateEnvVars("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
+                dsn := fmt.Sprintf(
+                        "host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+                        os.Getenv("POSTGRES_HOST"),
+                        os.Getenv("POSTGRES_PORT"),
+                        os.Getenv("POSTGRES_DB"),
+                        os.Getenv("POSTGRES_USER"),
+                        os.Getenv("POSTGRES_PASSWORD"),
+                )
+                db, err := sql.Open("postgres", dsn)
+                if err != nil {
+                        log.WithError(err).Fatal("failed to connect to Postgres")
+                }
+                log.Info("Connected to Postgres")
+                return &PostgresStore{db: db}
+        } else if dbDriver == "rqlite" {
+                validateEnvVars("RQLITE_URL")
+                conn, err := gorqlite.Open(os.Getenv("RQLITE_URL"))
+                if err != nil {
+                        log.WithError(err).Fatal("failed to connect to rqlite")
+                }
+                log.Info("Connected to rqlite")
+                return &RqliteStore{conn: conn}
+        } else {
+                log.Fatalf("Unsupported DB_DRIVER: %s", dbDriver)
+        }
+        return nil
 }
