@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	// "strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,10 +40,14 @@ var (
 )
 
 type User struct {
-	Username  string `gorm:"primaryKey"`
-	Password1 string
-	Password2 string
-	OrgID     string
+	Username      string    `gorm:"primaryKey"`
+	Password1     string
+	Password2     string
+	OrgID         string
+	LastLogin     time.Time
+	LastLoginIP   string
+	FailedLogins  int
+	LastFailedIP  string
 }
 
 func main() {
@@ -73,12 +78,6 @@ func main() {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 
-	if ttlStr := os.Getenv("USER_CACHE_TTL"); ttlStr != "" {
-		if d, err := time.ParseDuration(ttlStr); err == nil {
-			cacheTTL = d
-		}
-	}
-
 	loadUserCache()
 	go cacheRefresher()
 
@@ -87,6 +86,7 @@ func main() {
 	mux.HandleFunc("/api/v1/push", handlePush)
 	mux.HandleFunc("/admin/refresh", adminAuth(handleAdminRefresh))
 	mux.HandleFunc("/admin/users", adminAuth(handleAdminUsers))
+	mux.HandleFunc("/admin/stats", adminAuth(handleAdminStats))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -145,25 +145,45 @@ func loadUserCache() {
 	log.WithField("count", len(userCache)).Info("User cache refreshed")
 }
 
-func validateUser(username, password string) bool {
+func validateUser(username, password string, ip string) bool {
 	cacheMux.RLock()
-	defer cacheMux.RUnlock()
 	u, ok := userCache[username]
+	cacheMux.RUnlock()
+
 	if !ok {
 		log.WithField("user", username).Warn("User not found in cache")
+		incrementFailed(username, ip)
 		return false
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(u.Password1), []byte(password)) == nil {
+		updateLastLogin(username, ip)
 		return true
 	}
 
 	if u.Password2 != "" && bcrypt.CompareHashAndPassword([]byte(u.Password2), []byte(password)) == nil {
+		updateLastLogin(username, ip)
 		return true
 	}
 
 	log.WithField("user", username).Warn("Password mismatch")
+	incrementFailed(username, ip)
 	return false
+}
+
+func incrementFailed(username string, ip string) {
+	db.Model(&User{}).Where("username = ?", username).Updates(map[string]interface{}{
+		"failed_logins":  gorm.Expr("failed_logins + 1"),
+		"last_failed_ip": ip,
+	})
+}
+
+func updateLastLogin(username string, ip string) {
+	db.Model(&User{}).Where("username = ?", username).Updates(map[string]interface{}{
+		"last_login":    time.Now(),
+		"failed_logins": 0,
+		"last_login_ip": ip,
+	})
 }
 
 func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
@@ -254,12 +274,29 @@ func handleAdminRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	var users []User
+	if err := db.Find(&users).Error; err != nil {
+		http.Error(w, "Failed to load users", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "=== Mimir Proxy Stats ===\n")
+	fmt.Fprintf(w, "Total Users: %d\n", len(users))
+	fmt.Fprintf(w, "\n%-20s %-20s %-20s %-10s\n", "Username", "OrgID", "LastLogin", "FailedLogins")
+	for _, u := range users {
+		fmt.Fprintf(w, "%-20s %-20s %-20s %-10d\n",
+			u.Username, u.OrgID, u.LastLogin.Format(time.RFC3339), u.FailedLogins)
+	}
+}
+
 func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		orgID := r.FormValue("org_id")
+		which := r.FormValue("which")
 
 		if username == "" || password == "" {
 			http.Error(w, "username & password required", http.StatusBadRequest)
@@ -272,14 +309,27 @@ func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		u := User{Username: username, Password1: string(hash), OrgID: orgID}
+		var u User
+		db.First(&u, "username = ?", username)
+
+		if u.Username == "" {
+			u.Username = username
+			u.OrgID = orgID
+		}
+
+		if which == "2" {
+			u.Password2 = string(hash)
+		} else {
+			u.Password1 = string(hash)
+		}
+
 		if err := db.WithContext(r.Context()).Save(&u).Error; err != nil {
 			http.Error(w, "Failed to save user", http.StatusInternalServerError)
 			return
 		}
 
 		loadUserCache()
-		fmt.Fprintf(w, "Added user: %s\n", username)
+		fmt.Fprintf(w, "Added/Updated user: %s\n", username)
 
 	case "DELETE":
 		username := r.FormValue("username")
@@ -323,7 +373,19 @@ func authenticate(r *http.Request) bool {
 	if !ok {
 		return false
 	}
-	return validateUser(username, password)
+	ip := getClientIP(r)
+	return validateUser(username, password, ip)
+}
+
+func getClientIP(r *http.Request) string {
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	if xForwardedFor != "" {
+		// in case of multiple IPs take first
+		parts := strings.Split(xForwardedFor, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	ip := strings.Split(r.RemoteAddr, ":")[0]
+	return ip
 }
 
 func initLogger() {
