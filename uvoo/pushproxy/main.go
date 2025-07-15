@@ -99,6 +99,7 @@ func main() {
 	})
 
 	if adminUser != "" && adminPass != "" {
+    	mux.HandleFunc("/admin/refresh", handleAdminRefresh)
 		mux.HandleFunc("/admin/users", handleAdminUsers)
 		log.Info("Admin API enabled at /admin/users")
 	}
@@ -443,3 +444,45 @@ func loadUserCache() {
 	cacheMux.Unlock()
 }
 
+func handleAdminRefresh(w http.ResponseWriter, r *http.Request) {
+    if !checkAdminAuth(r) {
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+
+    log.Info("Forcing user cache refresh via admin/refresh")
+    loadUserCache() // force reload
+
+    // capture current cache
+    cacheMux.RLock()
+    defer cacheMux.RUnlock()
+
+    var sb strings.Builder
+    sb.WriteString("Current users in cache:\n")
+    for k, v := range userCache {
+        sb.WriteString(fmt.Sprintf(" - %s (orgID: %s)\n", k, v.OrgID))
+    }
+
+    log.Info("User cache refreshed via admin/refresh")
+    log.Info(sb.String())
+
+    w.Header().Set("Content-Type", "text/plain")
+    w.Write([]byte(sb.String()))
+}
+
+func checkAdminAuth(r *http.Request) bool {
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
+        return false
+    }
+    decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
+    if err != nil {
+        return false
+    }
+    parts := strings.SplitN(string(decoded), ":", 2)
+    if len(parts) != 2 {
+        return false
+    }
+    username, password := parts[0], parts[1]
+    return username == adminUser && password == adminPass
+}
