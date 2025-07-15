@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/prometheus v0.302.0
 	github.com/rqlite/gorqlite v0.0.0-20250609141355-ac86a4a1c9a8
 	github.com/sirupsen/logrus v1.9.3
+	golang.org/x/crypto v0.32.0
 )
 
 require (
