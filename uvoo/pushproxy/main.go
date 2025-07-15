@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
-	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,59 +10,48 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
-
-	_ "github.com/lib/pq"
-	pb "github.com/prometheus/prometheus/prompb"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var (
-	store      UserStore
+	db         *gorm.DB
 	mimirURL   *url.URL
 	mimirUser  string
 	mimirPass  string
 	httpClient *http.Client
 	log        = logrus.New()
 
-	adminUser = os.Getenv("ADMIN_USERNAME")
-	adminPass = os.Getenv("ADMIN_PASSWORD")
-
 	userCache = make(map[string]User)
 	cacheMux  = &sync.RWMutex{}
 	cacheTTL  = 30 * time.Second
+
+	adminUser string
+	adminPass string
 )
 
 type User struct {
-	Username         string
-	Password1        string
-	Password2        string
-	OrgID            string
-	LastFailedIP     string
-	LastFailedReason string
-}
-
-type UserStore interface {
-	LoadAll() (map[string]User, error)
-}
-
-type PostgresStore struct {
-	db *sql.DB
+	Username  string `gorm:"primaryKey"`
+	Password1 string
+	Password2 string
+	OrgID     string
 }
 
 func main() {
 	initLogger()
 	validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
-	store = openStore()
+	openDB()
+
+	adminUser = os.Getenv("ADMIN_USERNAME")
+	adminPass = os.Getenv("ADMIN_PASSWORD")
 
 	var err error
 	mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
@@ -87,22 +73,25 @@ func main() {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 
+	if ttlStr := os.Getenv("USER_CACHE_TTL"); ttlStr != "" {
+		if d, err := time.ParseDuration(ttlStr); err == nil {
+			cacheTTL = d
+		}
+	}
+
+	loadUserCache()
 	go cacheRefresher()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/prometheus/", handlePrometheusQuery)
 	mux.HandleFunc("/api/v1/push", handlePush)
+	mux.HandleFunc("/admin/refresh", adminAuth(handleAdminRefresh))
+	mux.HandleFunc("/admin/users", adminAuth(handleAdminUsers))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
-
-	if adminUser != "" && adminPass != "" {
-    	mux.HandleFunc("/admin/refresh", handleAdminRefresh)
-		mux.HandleFunc("/admin/users", handleAdminUsers)
-		log.Info("Admin API enabled at /admin/users")
-	}
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
@@ -117,6 +106,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 	log.Info("Shutting down gracefully...")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
@@ -125,276 +115,226 @@ func main() {
 	log.Info("Server stopped.")
 }
 
-// -------------------------- User Store --------------------------
-
-func (p *PostgresStore) LoadAll() (map[string]User, error) {
-	tmp := make(map[string]User)
-	rows, err := p.db.Query(`SELECT username, password1, password2, org_id, last_failed_ip, last_failed_reason FROM users`)
-	if err != nil {
-		return nil, err
+func cacheRefresher() {
+	for {
+		time.Sleep(cacheTTL)
+		loadUserCache()
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var u User
-		if err := rows.Scan(&u.Username, &u.Password1, &u.Password2, &u.OrgID, &u.LastFailedIP, &u.LastFailedReason); err != nil {
-			continue
-		}
+}
+
+func loadUserCache() {
+	log.Info("Loading user cache...")
+	var users []User
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.WithContext(ctx).Find(&users).Error; err != nil {
+		log.WithError(err).Error("Failed to load users from DB")
+		return
+	}
+
+	tmp := make(map[string]User)
+	for _, u := range users {
 		tmp[u.Username] = u
 	}
-	return tmp, nil
+
+	cacheMux.Lock()
+	userCache = tmp
+	cacheMux.Unlock()
+
+	log.WithField("count", len(userCache)).Info("User cache refreshed")
 }
 
-// -------------------------- Admin --------------------------
-
-func authenticateAdmin(r *http.Request) bool {
-	if adminUser == "" || adminPass == "" {
-		return false
-	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Authorization"), "Basic "))
-	if err != nil {
-		return false
-	}
-	parts := strings.SplitN(string(decoded), ":", 2)
-	return len(parts) == 2 && parts[0] == adminUser && parts[1] == adminPass
-}
-
-func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	if !authenticateAdmin(r) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		handleListUsers(w)
-	case http.MethodPost:
-		handleAddUser(w, r)
-	case http.MethodDelete:
-		handleDeleteUser(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func handleListUsers(w http.ResponseWriter) {
-	rows, err := store.(*PostgresStore).db.Query(
-		`SELECT username, org_id, last_failed_ip, last_failed_reason FROM users`)
-	if err != nil {
-		http.Error(w, "Failed to fetch users", 500)
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var u, org, ip, reason string
-		rows.Scan(&u, &org, &ip, &reason)
-		fmt.Fprintf(w, "user: %s, org: %s, last_failed_ip: %s, last_failed_reason: %s\n", u, org, ip, reason)
-	}
-}
-
-func handleAddUser(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	username := r.Form.Get("username")
-	password := r.Form.Get("password")
-	org := r.Form.Get("org_id")
-
-	if username == "" || password == "" || org == "" {
-		http.Error(w, "username, password, org_id required", 400)
-		return
-	}
-
-	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-
-	_, err := store.(*PostgresStore).db.Exec(
-		`INSERT INTO users (username, password1, org_id) VALUES ($1, $2, $3) 
-		 ON CONFLICT(username) DO UPDATE SET password1=$2, org_id=$3`,
-		username, string(hash), org)
-	if err != nil {
-		http.Error(w, "Failed to insert user", 500)
-		return
-	}
-	w.Write([]byte("User added/updated\n"))
-}
-
-func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	username := r.Form.Get("username")
-	if username == "" {
-		http.Error(w, "username required", 400)
-		return
-	}
-
-	_, err := store.(*PostgresStore).db.Exec(`DELETE FROM users WHERE username=$1`, username)
-	if err != nil {
-		http.Error(w, "Failed to delete user", 500)
-		return
-	}
-	w.Write([]byte("User deleted\n"))
-}
-
-// -------------------------- Auth & Helpers --------------------------
-
-func authenticate(r *http.Request) bool {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
-		return false
-	}
-	decoded, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
-	parts := strings.SplitN(string(decoded), ":", 2)
-	if len(parts) != 2 {
-		return false
-	}
-	return validateUser(parts[0], parts[1], r)
-}
-
-func validateUser(username, password string, r *http.Request) bool {
+func validateUser(username, password string) bool {
 	cacheMux.RLock()
+	defer cacheMux.RUnlock()
 	u, ok := userCache[username]
-	cacheMux.RUnlock()
 	if !ok {
-		logAuthFailure(username, r, "not found")
+		log.WithField("user", username).Warn("User not found in cache")
 		return false
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(u.Password1), []byte(password)) == nil {
 		return true
 	}
+
 	if u.Password2 != "" && bcrypt.CompareHashAndPassword([]byte(u.Password2), []byte(password)) == nil {
 		return true
 	}
 
-	logAuthFailure(username, r, "invalid password")
+	log.WithField("user", username).Warn("Password mismatch")
 	return false
 }
 
-func logAuthFailure(username string, r *http.Request, reason string) {
-	ip := r.RemoteAddr
-	if xfwd := r.Header.Get("X-Forwarded-For"); xfwd != "" {
-		ip = strings.Split(xfwd, ",")[0]
-	}
-	_, _ = store.(*PostgresStore).db.Exec(
-		`UPDATE users SET last_failed_ip=$1, last_failed_reason=$2 WHERE username=$3`,
-		ip, reason, username,
-	)
-	log.WithFields(logrus.Fields{"user": username, "ip": ip, "reason": reason}).Warn("Auth failure")
-}
-
-// -------------------------- Prom & Push --------------------------
-
 func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
 	if !authenticate(r) {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	username, _, _ := r.BasicAuth()
-	orgID, _ := getOrgID(username)
+	orgID := userCache[username].OrgID
 
 	requestPath := strings.TrimPrefix(r.URL.Path, "/prometheus")
+	if requestPath == "" {
+		requestPath = "/"
+	}
+
 	backendURL := *mimirURL
 	backendURL.Path = path.Join(mimirURL.Path, requestPath)
 	backendURL.RawQuery = r.URL.RawQuery
 
-	backendReq, _ := http.NewRequestWithContext(r.Context(), r.Method, backendURL.String(), r.Body)
+	backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendURL.String(), r.Body)
+	if err != nil {
+		http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
+		log.WithError(err).Error("creating backend request")
+		return
+	}
+
 	backendReq.Header = r.Header.Clone()
 	backendReq.SetBasicAuth(mimirUser, mimirPass)
+
 	if orgID != "" {
 		backendReq.Header.Set("X-Scope-OrgID", orgID)
 	}
 
 	resp, err := httpClient.Do(backendReq)
 	if err != nil {
-		http.Error(w, "Failed to query Mimir", 502)
+		http.Error(w, "Failed to query backend", http.StatusBadGateway)
+		log.WithError(err).Error("querying Mimir")
 		return
 	}
 	defer resp.Body.Close()
+
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
 
 func handlePush(w http.ResponseWriter, r *http.Request) {
 	if !authenticate(r) {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	username, _, _ := r.BasicAuth()
-	orgID, _ := getOrgID(username)
+	orgID := userCache[username].OrgID
 
 	data, _ := io.ReadAll(r.Body)
 	defer r.Body.Close()
 
-	var compressed []byte
-	if isLikelyText(data) {
-		wr, _ := parseRawMetric(string(data), username, orgID)
-		bin, _ := proto.Marshal(wr)
-		compressed = snappy.Encode(nil, bin)
-	} else {
-		compressed = data
-	}
-
-	backendReq, _ := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), bytes.NewReader(compressed))
+	backendReq, _ := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), strings.NewReader(string(data)))
 	backendReq.Header.Set("Content-Encoding", "snappy")
+	backendReq.Header.Set("Content-Type", "application/x-protobuf")
 	backendReq.SetBasicAuth(mimirUser, mimirPass)
+
 	if orgID != "" {
 		backendReq.Header.Set("X-Scope-OrgID", orgID)
 	}
 
-	resp, _ := httpClient.Do(backendReq)
+	resp, err := httpClient.Do(backendReq)
+	if err != nil {
+		http.Error(w, "Failed to push to backend", http.StatusBadGateway)
+		log.WithError(err).Error("pushing to Mimir")
+		return
+	}
 	defer resp.Body.Close()
+
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
 
-// -------------------------- Misc --------------------------
-
-func getOrgID(username string) (string, error) {
+func handleAdminRefresh(w http.ResponseWriter, r *http.Request) {
+	loadUserCache()
 	cacheMux.RLock()
 	defer cacheMux.RUnlock()
-	u, ok := userCache[username]
-	if !ok {
-		return "", fmt.Errorf("user not found")
+
+	fmt.Fprintf(w, "Current cached users:\n")
+	for u, data := range userCache {
+		fmt.Fprintf(w, "- %s (org_id: %s)\n", u, data.OrgID)
 	}
-	return u.OrgID, nil
 }
 
-func parseRawMetric(raw, username, orgID string) (*pb.WriteRequest, error) {
-	raw = strings.TrimSpace(raw)
-	idxOpen := strings.Index(raw, "{")
-	idxClose := strings.Index(raw, "}")
-	metricName := strings.TrimSpace(raw[:idxOpen])
-	labelPart := raw[idxOpen+1 : idxClose]
-	rest := strings.TrimSpace(raw[idxClose+1:])
+func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		orgID := r.FormValue("org_id")
 
-	parts := strings.Fields(rest)
-	value, _ := strconv.ParseFloat(parts[0], 64)
-	timestamp, _ := strconv.ParseInt(parts[1], 10, 64)
-
-	labels := []pb.Label{{Name: "__name__", Value: metricName}}
-	for _, pair := range strings.Split(labelPart, ",") {
-		kv := strings.SplitN(pair, "=", 2)
-		labels = append(labels, pb.Label{Name: strings.TrimSpace(kv[0]), Value: strings.Trim(kv[1], `"`)})
-
-	}
-	labels = append(labels, pb.Label{Name: "username", Value: username})
-	if orgID != "" {
-		labels = append(labels, pb.Label{Name: "org_id", Value: orgID})
-	}
-
-	return &pb.WriteRequest{
-		Timeseries: []pb.TimeSeries{{Labels: labels, Samples: []pb.Sample{{Value: value, Timestamp: timestamp}}}},
-	}, nil
-}
-
-func isLikelyText(data []byte) bool {
-	for _, c := range data {
-		if (c < 32 && c != 9 && c != 10 && c != 13) || c > 126 {
-			return false
+		if username == "" || password == "" {
+			http.Error(w, "username & password required", http.StatusBadRequest)
+			return
 		}
+
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "bcrypt error", http.StatusInternalServerError)
+			return
+		}
+
+		u := User{Username: username, Password1: string(hash), OrgID: orgID}
+		if err := db.WithContext(r.Context()).Save(&u).Error; err != nil {
+			http.Error(w, "Failed to save user", http.StatusInternalServerError)
+			return
+		}
+
+		loadUserCache()
+		fmt.Fprintf(w, "Added user: %s\n", username)
+
+	case "DELETE":
+		username := r.FormValue("username")
+		if username == "" {
+			http.Error(w, "username required", http.StatusBadRequest)
+			return
+		}
+
+		if err := db.WithContext(r.Context()).Delete(&User{}, "username = ?", username).Error; err != nil {
+			http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+			return
+		}
+
+		loadUserCache()
+		fmt.Fprintf(w, "Deleted user: %s\n", username)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-	return true
+}
+
+func adminAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if adminUser == "" || adminPass == "" {
+			http.Error(w, "Admin not configured", http.StatusForbidden)
+			return
+		}
+
+		username, password, ok := r.BasicAuth()
+		if !ok || username != adminUser || password != adminPass {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}
+}
+
+func authenticate(r *http.Request) bool {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+	return validateUser(username, password)
 }
 
 func initLogger() {
-	level, _ := logrus.ParseLevel(os.Getenv("LOG_LEVEL"))
+	levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
+	if levelStr == "" {
+		levelStr = "info"
+	}
+	level, err := logrus.ParseLevel(levelStr)
+	if err != nil {
+		level = logrus.InfoLevel
+	}
 	log.SetLevel(level)
 	log.SetFormatter(&logrus.JSONFormatter{TimestampFormat: time.RFC3339})
 	log.SetOutput(os.Stdout)
@@ -408,81 +348,20 @@ func validateEnvVars(vars ...string) {
 	}
 }
 
-func openStore() UserStore {
+func openDB() {
 	dsn := fmt.Sprintf(
 		"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
 		os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT"),
 		os.Getenv("POSTGRES_DB"), os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"),
 	)
-	db, _ := sql.Open("postgres", dsn)
-	db.Exec(`CREATE TABLE IF NOT EXISTS users (
-		username TEXT PRIMARY KEY,
-		password1 TEXT NOT NULL,
-		password2 TEXT,
-		org_id TEXT,
-		last_failed_ip TEXT,
-		last_failed_reason TEXT
-	)`)
-	return &PostgresStore{db: db}
-}
-
-func cacheRefresher() {
-	for {
-		loadUserCache()
-		time.Sleep(cacheTTL)
-	}
-}
-
-func loadUserCache() {
-	tmp, err := store.LoadAll()
+	var err error
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.WithError(err).Error("Failed to load user cache")
-		return
+		log.WithError(err).Fatal("Failed to connect to Postgres")
 	}
-	cacheMux.Lock()
-	userCache = tmp
-	cacheMux.Unlock()
+	if err := db.AutoMigrate(&User{}); err != nil {
+		log.WithError(err).Fatal("Failed to migrate schema")
+	}
+	log.Info("Connected to Postgres and ensured schema")
 }
 
-func handleAdminRefresh(w http.ResponseWriter, r *http.Request) {
-    if !checkAdminAuth(r) {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
-
-    log.Info("Forcing user cache refresh via admin/refresh")
-    loadUserCache() // force reload
-
-    // capture current cache
-    cacheMux.RLock()
-    defer cacheMux.RUnlock()
-
-    var sb strings.Builder
-    sb.WriteString("Current users in cache:\n")
-    for k, v := range userCache {
-        sb.WriteString(fmt.Sprintf(" - %s (orgID: %s)\n", k, v.OrgID))
-    }
-
-    log.Info("User cache refreshed via admin/refresh")
-    log.Info(sb.String())
-
-    w.Header().Set("Content-Type", "text/plain")
-    w.Write([]byte(sb.String()))
-}
-
-func checkAdminAuth(r *http.Request) bool {
-    authHeader := r.Header.Get("Authorization")
-    if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
-        return false
-    }
-    decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
-    if err != nil {
-        return false
-    }
-    parts := strings.SplitN(string(decoded), ":", 2)
-    if len(parts) != 2 {
-        return false
-    }
-    username, password := parts[0], parts[1]
-    return username == adminUser && password == adminPass
-}
