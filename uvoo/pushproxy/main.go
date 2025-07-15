@@ -11,8 +11,8 @@ import (
     "net/http"
     "net/url"
     "os"
-	"path"
     "os/signal"
+    "path"
     "strconv"
     "strings"
     "sync"
@@ -74,7 +74,6 @@ func main() {
     mimirUser = os.Getenv("MIMIR_USERNAME")
     mimirPass = os.Getenv("MIMIR_PASSWORD")
 
-    // setup HTTP client
     if os.Getenv("BACKEND_SKIP_TLS_VERIFY") == "true" {
         log.Warn("BACKEND_SKIP_TLS_VERIFY is true — skipping TLS verification for backend requests!")
         httpClient = &http.Client{
@@ -98,8 +97,7 @@ func main() {
     go cacheRefresher()
 
     mux := http.NewServeMux()
-    // Change this line to use a path prefix for all Prometheus queries
-    mux.HandleFunc("/prometheus/", handlePrometheusQuery) // Note the trailing slash
+    mux.HandleFunc("/prometheus/", handlePrometheusQuery)
     mux.HandleFunc("/api/v1/push", handlePush)
     mux.Handle("/metrics", promhttp.Handler())
     mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -224,15 +222,8 @@ func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Strip the /prometheus prefix
-    requestPath := strings.TrimPrefix(r.URL.Path, "/prometheus")
-    if requestPath == "" {
-        requestPath = "/" // default
-    }
-
-    // Build backend URL — Mimir expects /api/v1/… etc.
-    backendURL := *mimirURL // copy base Mimir URL
-    backendURL.Path = path.Join(backendURL.Path, requestPath)
+    backendURL := *mimirURL
+    backendURL.Path = path.Join("/prometheus", strings.TrimPrefix(r.URL.Path, "/prometheus"))
     backendURL.RawQuery = r.URL.RawQuery
 
     backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendURL.String(), r.Body)
@@ -330,7 +321,10 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
         contentType = "application/x-protobuf"
     }
 
-    backendReq, err := http.NewRequestWithContext(r.Context(), "POST", mimirURL.String(), bytes.NewReader(compressedData))
+    backendURL := *mimirURL
+    backendURL.Path = "/api/v1/push"
+
+    backendReq, err := http.NewRequestWithContext(r.Context(), "POST", backendURL.String(), bytes.NewReader(compressedData))
     if err != nil {
         http.Error(w, "Failed to create backend request", http.StatusInternalServerError)
         log.WithError(err).Error("error creating backend request")
