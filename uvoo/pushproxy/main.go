@@ -224,28 +224,15 @@ func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // This is the key change: prepend the full request path to mimirURL's base
-    // and remove the proxy's own /prometheus prefix.
-    // For example, if r.URL.Path is "/prometheus/api/v1/query" and mimirURL.Path is "/",
-    // we want the backend path to be "/api/v1/query".
-    // If mimirURL.Path is already "/prometheus", then we need to ensure the final path is correct.
-
-    // Remove the proxy's specific prefix for this handler, which is "/prometheus"
-    // Example: If r.URL.Path is "/prometheus/api/v1/query", strip "/prometheus" to get "/api/v1/query"
+    // Strip the /prometheus prefix
     requestPath := strings.TrimPrefix(r.URL.Path, "/prometheus")
     if requestPath == "" {
-        requestPath = "/" // Ensure we don't end up with an empty path
+        requestPath = "/" // default
     }
 
-    // Construct the full backend URL
-    backendURL := *mimirURL // copy the base Mimir URL (e.g., http://mimir-backend:8080)
-    // Now append the *remainder* of the original request path to the Mimir URL's path
-    // This means if mimirURL was "http://mimir-backend:8080" and requestPath is "/api/v1/query",
-    // then backendURL.Path becomes "/api/v1/query".
-    // If mimirURL was "http://mimir-backend:8080/prometheus" and requestPath is "/api/v1/query",
-    // then backendURL.Path becomes "/prometheus/api/v1/query". This is what we want.
+    // Build backend URL — Mimir expects /api/v1/… etc.
+    backendURL := *mimirURL // copy base Mimir URL
     backendURL.Path = path.Join(backendURL.Path, requestPath)
-    // Ensure query parameters are also passed through
     backendURL.RawQuery = r.URL.RawQuery
 
     backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendURL.String(), r.Body)
@@ -255,7 +242,7 @@ func handlePrometheusQuery(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    backendReq.Header = r.Header.Clone() // copy incoming headers
+    backendReq.Header = r.Header.Clone()
     backendReq.SetBasicAuth(mimirUser, mimirPass)
 
     if orgID != "" {
