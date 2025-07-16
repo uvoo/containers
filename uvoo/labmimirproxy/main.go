@@ -140,18 +140,27 @@ func main() {
 		e.Any(p, handleProxy)
 	}
 
-	// graceful shutdown
 	go func() {
-		addr := ":8080"
+		addrHTTP := ":8080"
+		addrHTTPS := ":8443"
 
 		enableTLS := strings.ToLower(os.Getenv("ENABLE_TLS")) == "true"
+
+		// always start HTTP
+		go func() {
+			log.Info("Starting HTTP server on ", addrHTTP)
+			if err := e.Start(addrHTTP); err != nil && err != http.ErrServerClosed {
+				log.WithError(err).Fatal("HTTP server error")
+			}
+		}()
+
 		if enableTLS {
 			certFile := os.Getenv("TLS_CRT")
 			keyFile := os.Getenv("TLS_KEY")
 
 			if certFile != "" && keyFile != "" {
-				log.Info("Starting HTTPS server with provided TLS certificate")
-				if err := e.StartTLS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				log.Info("Starting HTTPS server with provided TLS certificate on ", addrHTTPS)
+				if err := e.StartTLS(addrHTTPS, certFile, keyFile); err != nil && err != http.ErrServerClosed {
 					log.WithError(err).Fatal("HTTPS server error")
 				}
 			} else {
@@ -160,18 +169,15 @@ func main() {
 				if err != nil {
 					log.WithError(err).Fatal("failed to generate self-signed certificate")
 				}
-				if err := e.StartTLS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				log.Info("Starting HTTPS server with self-signed cert on ", addrHTTPS)
+				if err := e.StartTLS(addrHTTPS, certFile, keyFile); err != nil && err != http.ErrServerClosed {
 					log.WithError(err).Fatal("HTTPS server error")
 				}
-			}
-		} else {
-			log.Info("Starting HTTP server")
-			if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-				log.WithError(err).Fatal("HTTP server error")
 			}
 		}
 	}()
 
+	// graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
