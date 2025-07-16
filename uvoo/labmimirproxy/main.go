@@ -16,6 +16,14 @@ import (
     "syscall"
     "time"
 
+ "crypto/rand"
+ "crypto/x509"
+ "crypto/x509/pkix"
+ "crypto/rsa"
+ "encoding/pem"
+ "math/big"
+
+
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
 
@@ -134,11 +142,37 @@ func main() {
     }
 
     // graceful shutdown
-    go func() {
-        if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
-            log.WithError(err).Fatal("server error")
-        }
-    }()
+	// graceful shutdown
+	go func() {
+		addr := ":8080"
+
+		enableTLS := strings.ToLower(os.Getenv("ENABLE_TLS")) == "true"
+		if enableTLS {
+			certFile := os.Getenv("TLS_CRT")
+			keyFile := os.Getenv("TLS_KEY")
+
+			if certFile != "" && keyFile != "" {
+				log.Info("Starting HTTPS server with provided TLS certificate")
+				if err := e.StartTLS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+					log.WithError(err).Fatal("HTTPS server error")
+				}
+			} else {
+				log.Warn("ENABLE_TLS is true but TLS_CRT/TLS_KEY not set — generating self-signed cert")
+				certFile, keyFile, err := generateSelfSignedCert()
+				if err != nil {
+					log.WithError(err).Fatal("failed to generate self-signed certificate")
+				}
+				if err := e.StartTLS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+					log.WithError(err).Fatal("HTTPS server error")
+				}
+			}
+		} else {
+			log.Info("Starting HTTP server")
+			if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+				log.WithError(err).Fatal("HTTP server error")
+			}
+		}
+	}()
 
     quit := make(chan os.Signal, 1)
     signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -443,3 +477,51 @@ func openDB() {
     }
     log.Info("Connected to Postgres and ensured schema")
 }
+
+func generateSelfSignedCert() (string, string, error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"mimirproxy-selfsigned"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(365 * 24 * time.Hour),
+
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return "", "", err
+	}
+
+	certOut, err := os.CreateTemp("", "mimirproxy-cert-*.pem")
+	if err != nil {
+		return "", "", err
+	}
+	defer certOut.Close()
+
+	keyOut, err := os.CreateTemp("", "mimirproxy-key-*.pem")
+	if err != nil {
+		return "", "", err
+	}
+	defer keyOut.Close()
+
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return "", "", err
+	}
+	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
+		return "", "", err
+	}
+
+	log.Infof("Generated self-signed cert: %s, key: %s", certOut.Name(), keyOut.Name())
+	return certOut.Name(), keyOut.Name(), nil
+}
+
