@@ -1,4 +1,4 @@
-module labmimirproxy
+module mimirproxy
 
 go 1.24.0
 
