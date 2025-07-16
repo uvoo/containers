@@ -1,4 +1,4 @@
-module pushproxy
+module mimirproxy
 
 go 1.24.0
 
