@@ -377,6 +377,13 @@ func updateLastLogin(username, ip string) {
     })
 }
 
+func cacheRefresher() {
+    for {
+        time.Sleep(cacheTTL)
+        loadUserCache()
+    }
+}
+
 func loadUserCache() {
     var users []User
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
