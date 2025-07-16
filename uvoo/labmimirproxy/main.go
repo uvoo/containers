@@ -1,147 +1,145 @@
+
 package main
 
 import (
-    "bytes"
-    "context"
-    "crypto/tls"
-    "fmt"
-    "io"
-    "net/http"
-    "net/url"
-    "os"
-    "os/signal"
-    "path"
-    "strings"
-    "sync"
-    "syscall"
-    "time"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"io"
+	"math/big"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"path"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
 
- "crypto/rand"
- "crypto/x509"
- "crypto/x509/pkix"
- "crypto/rsa"
- "encoding/pem"
- "math/big"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
-
-    "github.com/labstack/echo/v4"
-    "github.com/labstack/echo/v4/middleware"
-
-    "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
-    "github.com/sirupsen/logrus"
-    "golang.org/x/crypto/bcrypt"
-    "gorm.io/driver/postgres"
-    "gorm.io/gorm"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var (
-    db         *gorm.DB
-    mimirURL   *url.URL
-    mimirUser  string
-    mimirPass  string
-    httpClient *http.Client
-    log        = logrus.New()
+	db         *gorm.DB
+	mimirURL   *url.URL
+	mimirUser  string
+	mimirPass  string
+	httpClient *http.Client
+	log        = logrus.New()
 
-    userCache = make(map[string]User)
-    cacheMux  = &sync.RWMutex{}
-    cacheTTL  = 30 * time.Second
+	userCache = make(map[string]User)
+	cacheMux  = &sync.RWMutex{}
+	cacheTTL  = 30 * time.Second
 
-    adminUser string
-    adminPass string
+	adminUser string
+	adminPass string
 
-    requestCounter = prometheus.NewCounterVec(
-        prometheus.CounterOpts{
-            Name: "proxy_requests_total",
-            Help: "Total proxied requests",
-        },
-        []string{"path", "method", "status"},
-    )
+	requestCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "proxy_requests_total",
+			Help: "Total proxied requests",
+		},
+		[]string{"path", "method", "status"},
+	)
 
-    requestDuration = prometheus.NewHistogramVec(
-        prometheus.HistogramOpts{
-            Name:    "proxy_request_duration_seconds",
-            Help:    "Duration of proxied requests",
-            Buckets: prometheus.DefBuckets,
-        },
-        []string{"path"},
-    )
+	requestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "proxy_request_duration_seconds",
+			Help:    "Duration of proxied requests",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"path"},
+	)
 )
 
 type User struct {
-    Username      string    `gorm:"primaryKey"`
-    Password1     string
-    Password2     string
-    OrgID         string
-    LastLogin     time.Time
-    LastLoginIP   string
-    FailedLogins  int
-    LastFailedIP  string
+	Username      string    `gorm:"primaryKey"`
+	Password1     string
+	Password2     string
+	OrgID         string
+	LastLogin     time.Time
+	LastLoginIP   string
+	FailedLogins  int
+	LastFailedIP  string
 }
 
 func main() {
-    initLogger()
-    validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
-    openDB()
+	initLogger()
+	validateEnvVars("MIMIR_URL", "MIMIR_USERNAME", "MIMIR_PASSWORD")
+	openDB()
 
-    adminUser = os.Getenv("ADMIN_USERNAME")
-    adminPass = os.Getenv("ADMIN_PASSWORD")
+	adminUser = os.Getenv("ADMIN_USERNAME")
+	adminPass = os.Getenv("ADMIN_PASSWORD")
 
-    var err error
-    mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
-    if err != nil {
-        log.WithError(err).Fatal("Invalid MIMIR_URL")
-    }
-    mimirUser = os.Getenv("MIMIR_USERNAME")
-    mimirPass = os.Getenv("MIMIR_PASSWORD")
+	var err error
+	mimirURL, err = url.Parse(os.Getenv("MIMIR_URL"))
+	if err != nil {
+		log.WithError(err).Fatal("Invalid MIMIR_URL")
+	}
+	mimirUser = os.Getenv("MIMIR_USERNAME")
+	mimirPass = os.Getenv("MIMIR_PASSWORD")
 
-    if os.Getenv("BACKEND_SKIP_TLS_VERIFY") == "true" {
-        log.Warn("BACKEND_SKIP_TLS_VERIFY is true — skipping TLS verification for backend requests!")
-        httpClient = &http.Client{
-            Timeout: 30 * time.Second,
-            Transport: &http.Transport{
-                TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-            },
-        }
-    } else {
-        httpClient = &http.Client{Timeout: 30 * time.Second}
-    }
+	if os.Getenv("BACKEND_SKIP_TLS_VERIFY") == "true" {
+		log.Warn("BACKEND_SKIP_TLS_VERIFY is true — skipping TLS verification for backend requests!")
+		httpClient = &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+	} else {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
 
-    loadUserCache()
-    go cacheRefresher()
+	loadUserCache()
+	go cacheRefresher()
 
-    prometheus.MustRegister(requestCounter)
-    prometheus.MustRegister(requestDuration)
+	prometheus.MustRegister(requestCounter)
+	prometheus.MustRegister(requestDuration)
 
-    e := echo.New()
-    e.HideBanner = true
-    e.Use(middleware.Recover())
-    e.Use(middleware.Logger())
+	e := echo.New()
+	e.HideBanner = true
+	e.Use(middleware.Recover())
+	e.Use(middleware.Logger())
 
-    // health & metrics
-    e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
-    e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
-    e.GET("/version", func(c echo.Context) error {
-        version := os.Getenv("VERSION")
-        if version == "" {
-            version = "unknown"
-        }
-        return c.String(http.StatusOK, fmt.Sprintf("mimirproxy version: %s\n", version))
-    })
+	// health & metrics
+	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
+	e.GET("/version", func(c echo.Context) error {
+		version := os.Getenv("VERSION")
+		if version == "" {
+			version = "unknown"
+		}
+		return c.String(http.StatusOK, fmt.Sprintf("mimirproxy version: %s\n", version))
+	})
 
-    // admin endpoints
-    admin := e.Group("/admin", adminAuth)
-    admin.GET("/refresh", adminRefresh)
-    admin.GET("/stats", adminStats)
-    admin.POST("/users", adminAddUser)
-    admin.DELETE("/users", adminDeleteUser)
+	// admin endpoints
+	admin := e.Group("/admin", adminAuth)
+	admin.GET("/refresh", adminRefresh)
+	admin.GET("/stats", adminStats)
+	admin.POST("/users", adminAddUser)
+	admin.DELETE("/users", adminDeleteUser)
 
-    // proxy endpoints
-    for _, p := range getAllowedPaths() {
-        e.Any(p, handleProxy)
-    }
+	// proxy endpoints
+	for _, p := range getAllowedPaths() {
+		e.Any(p, handleProxy)
+	}
 
-    // graceful shutdown
 	// graceful shutdown
 	go func() {
 		addr := ":8080"
@@ -174,97 +172,149 @@ func main() {
 		}
 	}()
 
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    <-quit
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-    if err := e.Shutdown(ctx); err != nil {
-        log.WithError(err).Fatal("forced shutdown")
-    }
-    log.Info("Server stopped")
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		log.WithError(err).Fatal("forced shutdown")
+	}
+	log.Info("Server stopped")
 }
 
 func getAllowedPaths() []string {
-    env := os.Getenv("ALLOWED_PATHS")
-    if env != "" {
-        parts := strings.Split(env, ",")
-        for i := range parts {
-            parts[i] = strings.TrimSpace(parts[i])
-        }
-        return parts
-    }
-    return []string{
-        "/prometheus/*",
-        "/api/v1/*",
-        "/otlp/v1/metrics",
-        "/distributor",
-        "/prometheus/api/v1/rules",
-        "/prometheus/api/v1/alerts",
-        "/prometheus/config/v1/rules",
-        "/api/v1/status/buildinfo",
-    }
+	env := os.Getenv("ALLOWED_PATHS")
+	if env != "" {
+		parts := strings.Split(env, ",")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		return parts
+	}
+	return []string{
+		"/prometheus/*",
+		"/api/v1/*",
+		"/otlp/v1/metrics",
+		"/distributor",
+		"/prometheus/api/v1/rules",
+		"/prometheus/api/v1/alerts",
+		"/prometheus/config/v1/rules",
+		"/api/v1/status/buildinfo",
+	}
 }
 
 func handleProxy(c echo.Context) error {
-    start := time.Now()
-    if !authenticate(c.Request()) {
-        requestCounter.WithLabelValues(c.Path(), c.Request().Method, "401").Inc()
-        return echo.NewHTTPError(http.StatusUnauthorized)
-    }
+	start := time.Now()
+	if !authenticate(c.Request()) {
+		requestCounter.WithLabelValues(c.Path(), c.Request().Method, "401").Inc()
+		return echo.NewHTTPError(http.StatusUnauthorized)
+	}
 
-    username, _, _ := c.Request().BasicAuth()
-    orgID := userCache[username].OrgID
+	username, _, _ := c.Request().BasicAuth()
+	orgID := userCache[username].OrgID
 
-    backendURL := *mimirURL
-    backendURL.Path = path.Join(mimirURL.Path, c.Request().URL.Path)
-    backendURL.RawQuery = c.Request().URL.RawQuery
+	backendURL := *mimirURL
+	backendURL.Path = path.Join(mimirURL.Path, c.Request().URL.Path)
+	backendURL.RawQuery = c.Request().URL.RawQuery
 
-    var body io.Reader
-    if c.Request().Body != nil {
-        data, err := io.ReadAll(c.Request().Body)
-        if err != nil {
-            requestCounter.WithLabelValues(c.Path(), c.Request().Method, "500").Inc()
-            return echo.NewHTTPError(http.StatusInternalServerError)
-        }
-        body = bytes.NewReader(data)
-        defer c.Request().Body.Close()
-    }
+	var body io.Reader
+	if c.Request().Body != nil {
+		data, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			requestCounter.WithLabelValues(c.Path(), c.Request().Method, "500").Inc()
+			return echo.NewHTTPError(http.StatusInternalServerError)
+		}
+		body = bytes.NewReader(data)
+		defer c.Request().Body.Close()
+	}
 
-    req, err := http.NewRequestWithContext(c.Request().Context(), c.Request().Method, backendURL.String(), body)
-    if err != nil {
-        requestCounter.WithLabelValues(c.Path(), c.Request().Method, "500").Inc()
-        return echo.NewHTTPError(http.StatusInternalServerError)
-    }
-    req.Header = c.Request().Header.Clone()
-    req.SetBasicAuth(mimirUser, mimirPass)
-    if orgID != "" {
-        req.Header.Set("X-Scope-OrgID", orgID)
-    }
+	req, err := http.NewRequestWithContext(c.Request().Context(), c.Request().Method, backendURL.String(), body)
+	if err != nil {
+		requestCounter.WithLabelValues(c.Path(), c.Request().Method, "500").Inc()
+		return echo.NewHTTPError(http.StatusInternalServerError)
+	}
+	req.Header = c.Request().Header.Clone()
+	req.SetBasicAuth(mimirUser, mimirPass)
+	if orgID != "" {
+		req.Header.Set("X-Scope-OrgID", orgID)
+	}
 
-    resp, err := httpClient.Do(req)
-    if err != nil {
-        requestCounter.WithLabelValues(c.Path(), c.Request().Method, "502").Inc()
-        return echo.NewHTTPError(http.StatusBadGateway)
-    }
-    defer resp.Body.Close()
+	log.Infof("Proxying %s %s to %s", c.Request().Method, c.Request().URL.Path, backendURL.String())
 
-    statusCode := resp.StatusCode
-    requestCounter.WithLabelValues(c.Path(), c.Request().Method, fmt.Sprintf("%d", statusCode)).Inc()
-    requestDuration.WithLabelValues(c.Path()).Observe(time.Since(start).Seconds())
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		requestCounter.WithLabelValues(c.Path(), c.Request().Method, "502").Inc()
+		return echo.NewHTTPError(http.StatusBadGateway)
+	}
+	defer resp.Body.Close()
 
-    c.Response().WriteHeader(resp.StatusCode)
-    io.Copy(c.Response(), resp.Body)
+	statusCode := resp.StatusCode
+	requestCounter.WithLabelValues(c.Path(), c.Request().Method, fmt.Sprintf("%d", statusCode)).Inc()
+	requestDuration.WithLabelValues(c.Path()).Observe(time.Since(start).Seconds())
 
-    log.WithFields(logrus.Fields{
-        "path":     c.Path(),
-        "method":   c.Request().Method,
-        "status":   resp.StatusCode,
-        "duration": time.Since(start),
-    }).Info("proxied request")
+	c.Response().WriteHeader(resp.StatusCode)
+	io.Copy(c.Response(), resp.Body)
 
-    return nil
+	log.WithFields(logrus.Fields{
+		"path":     c.Path(),
+		"method":   c.Request().Method,
+		"status":   resp.StatusCode,
+		"duration": time.Since(start),
+	}).Info("proxied request")
+
+	return nil
 }
+
+func generateSelfSignedCert() (string, string, error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"mimirproxy-selfsigned"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(365 * 24 * time.Hour),
+
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return "", "", err
+	}
+
+	certOut, err := os.CreateTemp("", "mimirproxy-cert-*.pem")
+	if err != nil {
+		return "", "", err
+	}
+	defer certOut.Close()
+
+	keyOut, err := os.CreateTemp("", "mimirproxy-key-*.pem")
+	if err != nil {
+		return "", "", err
+	}
+	defer keyOut.Close()
+
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return "", "", err
+	}
+	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
+		return "", "", err
+	}
+
+	log.Infof("Generated self-signed cert: %s, key: %s", certOut.Name(), keyOut.Name())
+	return certOut.Name(), keyOut.Name(), nil
+}
+
+// … keep all the other functions (admin*, loadUserCache, validateUser, etc.) as before …
+
 
 func adminRefresh(c echo.Context) error {
     loadUserCache()
@@ -477,51 +527,3 @@ func openDB() {
     }
     log.Info("Connected to Postgres and ensured schema")
 }
-
-func generateSelfSignedCert() (string, string, error) {
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return "", "", err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"mimirproxy-selfsigned"},
-		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(365 * 24 * time.Hour),
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return "", "", err
-	}
-
-	certOut, err := os.CreateTemp("", "mimirproxy-cert-*.pem")
-	if err != nil {
-		return "", "", err
-	}
-	defer certOut.Close()
-
-	keyOut, err := os.CreateTemp("", "mimirproxy-key-*.pem")
-	if err != nil {
-		return "", "", err
-	}
-	defer keyOut.Close()
-
-	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return "", "", err
-	}
-	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
-		return "", "", err
-	}
-
-	log.Infof("Generated self-signed cert: %s, key: %s", certOut.Name(), keyOut.Name())
-	return certOut.Name(), keyOut.Name(), nil
-}
-
