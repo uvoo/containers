@@ -25,5 +25,5 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["./pushproxy"]
+CMD ["./mimirproxy"]
 
