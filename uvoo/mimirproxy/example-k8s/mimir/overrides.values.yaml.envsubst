@@ -1,0 +1,115 @@
+mimir:
+  structuredConfig:
+    common:
+      storage:
+        backend: azure
+        azure:
+          account_name: "${MIMIR_AZURE_ACCOUNT_NAME}"
+          account_key: ${MIMIR_AZURE_ACCOUNT_KEY}
+          endpoint_suffix: blob.core.windows.net
+
+    blocks_storage:
+      backend: azure
+      azure:
+        container_name: "mimir-blocks"
+
+    alertmanager_storage:
+      backend: azure
+      azure:
+        container_name: "mimir-alertmanager"
+
+    ruler_storage:
+      backend: azure
+      azure:
+        container_name: "mimir-ruler"
+
+minio:
+  enabled: false
+
+ingester:
+  replicas: 2
+  persistentVolume:
+    enabled: true
+  zoneAwareReplication:
+    enabled: false # when enabled it is required to create 3 replicas and enable the 3 zones
+    topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules
+    zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.
+    - name: zone-a
+      nodeSelector:
+        topology.kubernetes.io/zone: westus2-1
+      storageClass: default
+    - name: zone-b
+      nodeSelector:
+        topology.kubernetes.io/zone: westus2-2
+      storageClass: default
+    - name: zone-c
+      nodeSelector:
+        topology.kubernetes.io/zone: westus2-3
+      storageClass: default
+  # affinity:
+  #   podAntiAffinity:
+  #     requiredDuringSchedulingIgnoredDuringExecution:
+  #     - labelSelector:
+  #         matchExpressions:
+  #         - key: app.kubernetes.io/name
+  #           operator: In
+  #           values:
+  #           - mimir
+  #         - key: app.kubernetes.io/component
+  #           operator: In
+  #           values:
+  #           - ingester
+  #       topologyKey: "topology.kubernetes.io/zone"
+
+store_gateway:
+  persistentVolume:
+    enabled: false
+  zoneAwareReplication:
+    enabled: false
+  replicas: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - mimir
+          - key: app.kubernetes.io/component
+            operator: In
+            values:
+            - store-gateway
+        topologyKey: "topology.kubernetes.io/zone"
+
+# Disable PVCs for other stateful components as they are using Azure Blob Storage
+compactor:
+  persistentVolume:
+    enabled: false
+ruler:
+  persistentVolume:
+    enabled: false
+alertmanager:
+  persistentVolume:
+    enabled: false
+
+gateway:
+  enabled: true
+  enabledNonEnterprise: true # Assumes you are using the OSS gateway
+  nginx:
+    basicAuth:
+      enabled: true
+      existingSecret: mimir-basic-auth
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations: {}
+    hosts:
+      - host: ${MIMIR_GATEWAY_INGRESS_HOST}
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: mimir-gateway-tls
+        hosts:
+          - ${MIMIR_GATEWAY_INGRESS_HOST}

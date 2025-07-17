@@ -1,0 +1,198 @@
+loki:
+  # Use structuredConfig for modern, clear configuration
+  structuredConfig:
+    querier:
+      # This setting allows queriers to find data up to 3 years old in storage. Correct.
+      # max_query_lookback: $LOKI_SAMPLES_MAX_AGE
+    limits_config:
+      max_query_lookback: $LOKI_SAMPLES_MAX_AGE
+      allow_structured_metadata: true
+      volume_enabled: true
+      ingestion_rate_mb: 1000
+      ingestion_burst_size_mb: 2000
+      unordered_writes: true
+      # This setting controls retention in the COMPACTOR. Setting to 3 years is correct.
+      retention_period: $LOKI_SAMPLES_MAX_AGE
+      # This allows ingesters to receive logs with old timestamps. Correct for your goal.
+      reject_old_samples_max_age: $LOKI_SAMPLES_MAX_AGE
+      # Limit the timespan of a SINGLE query to a reasonable value (e.g., 30 days)
+      # This prevents timeouts in Grafana but still allows you to view old data.
+      max_query_length: 721h
+
+    ingester:
+      query_store_max_look_back_period:
+      chunk_encoding: snappy
+      # Flush chunks to storage every 2 hours
+      max_chunk_age: 2h
+      chunk_target_size: 15728640
+      # [chunk_target_size: <int> | default = 1572864]
+      # [max_chunk_age: <duration> | default = 2h]
+
+    pattern_ingester:
+      enabled: true
+
+    compactor:
+      retention_enabled: true
+      delete_request_store: azure
+
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: $LOKI_SAMPLES_MAX_AGE
+
+  # Schema and storage configs remain outside structuredConfig in the chart
+  schemaConfig:
+    configs:
+      - from: "2022-01-01"
+        store: tsdb
+        object_store: azure
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  storage:
+    type: azure
+    bucketNames:
+      chunks: "${LOKI_CHUNKS_CONTAINER_NAME}"
+      ruler: "${LOKI_RULER_CONTAINER_NAME}"
+      admin: "${LOKI_ADMIN_CONTAINER_NAME}"
+    azure:
+      accountName: "${LOKI_AZURE_ACCOUNT_NAME}"
+      accountKey: "${LOKI_AZURE_ACCOUNT_KEY}"
+
+
+deploymentMode: Distributed
+
+ingester:
+  replicas: $LOKI_REPLICAS
+  zoneAwareReplication:
+    # -- Enable zone awareness.
+    enabled: false
+    # -- The percent of replicas in each zone that will be restarted at once. In a value of 0-100
+    maxUnavailablePct: 33 # Good default for 3 zones (1/3 at a time)
+    # -- zoneA configuration
+    zoneA:
+      # -- optionally define a node selector for this zone
+      nodeSelector:
+        topology.kubernetes.io/zone: westus2-1 # Node selector for Azure AZ 1
+      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      extraAffinity: {}
+      # -- Specific annotations to add to zone A statefulset
+      annotations: {}
+      # -- Specific annotations to add to zone A pods
+      podAnnotations: {}
+    zoneB:
+      # -- optionally define a node selector for this zone
+      nodeSelector:
+        topology.kubernetes.io/zone: westus2-2 # Node selector for Azure AZ 2
+      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      extraAffinity: {}
+      # -- Specific annotations to add to zone B statefulset
+      annotations: {}
+      # -- Specific annotations to add to zone B pods
+      podAnnotations: {}
+    # zoneC:
+    #   # -- optionally define a node selector for this zone
+    #   nodeSelector:
+    #     topology.kubernetes.io/zone: westus2-3 # Node selector for Azure AZ 3
+    #   # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+    #   extraAffinity: {}
+    #   # -- Specific annotations to add to zone C statefulset
+    #   annotations: {}
+    #   # -- Specific annotations to add to zone C pods
+    #   podAnnotations: {}
+
+  persistence:
+    enabled: true
+    claims:
+      - name: data
+        size: ${LOKI_INGESTER_PVC_SIZE}
+        # Expand this manually by editing PVC size and then update here. You will want 15Gi or higher to avoid PV filling up.
+        storageClass: null
+        # make sure storage class in on ZRS PVC
+    enableStatefulSetAutoDeletePVC: false
+    whenDeleted: Retain
+    whenScaled: Retain
+
+querier:
+ replicas: $LOKI_REPLICAS
+ maxUnavailable: $LOKI_MAX_UNAVAILABLE_REPLICAS
+
+queryFrontend:
+ replicas: 2
+ maxUnavailable: 1
+
+queryScheduler:
+ replicas: 2
+
+distributor:
+ replicas: $LOKI_REPLICAS
+ maxUnavailable: $LOKI_MAX_UNAVAILABLE_REPLICAS
+
+compactor:
+  replicas: 1
+
+indexGateway:
+ replicas: 2
+ maxUnavailable: 1
+
+ruler:
+ replicas: 1
+ maxUnavailable: 1
+
+gateway:
+  replicas: $LOKI_REPLICAS
+  httpSnippet: |
+    client_max_body_size 50m;
+  service:
+    type: ClusterIP
+  basicAuth:
+    enabled: true
+    existingSecret: loki-basic-auth
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "1000m"
+    labels: {}
+    hosts:
+      - host: ${LOKI_GATEWAY_INGRESS_HOST}
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: loki-gateway-tls
+        hosts:
+          - ${LOKI_GATEWAY_INGRESS_HOST}
+
+
+test:
+  enabled: false
+lokiCanary:
+  enabled: false
+  extraArgs:
+    - -pass=$(LOKI_PASS)
+    - -user=$(LOKI_USER)
+  extraEnv:
+    - name: LOKI_PASS
+      valueFrom:
+        secretKeyRef:
+          name: canary-basic-auth
+          key: password
+    - name: LOKI_USER
+      valueFrom:
+        secretKeyRef:
+          name: canary-basic-auth
+          key: username
+minio:
+ enabled: false
+
+backend:
+ replicas: 0
+read:
+ replicas: 0
+write:
+ replicas: 0
+
+singleBinary:
+ replicas: 0
