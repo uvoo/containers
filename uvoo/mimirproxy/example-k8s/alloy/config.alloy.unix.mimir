@@ -1,0 +1,35 @@
+logging {
+  level = "warn"
+}
+
+prometheus.remote_write "mimir_remote_write" {
+  endpoint {
+    tls_config {
+      insecure_skip_verify = true
+    }
+    url = "https://mimirproxy.example.com/api/v1/push"
+    basic_auth {
+      username = "test1"
+      password = "secret"
+    }
+  }
+}
+
+prometheus.exporter.unix "default" {
+  include_exporter_metrics = true
+  disable_collectors       = ["mdadm"]
+}
+
+prometheus.scrape "default" {
+  targets = array.concat(
+    prometheus.exporter.unix.default.targets,
+    [{
+      job         = "alloy",
+      __address__ = "127.0.0.1:12345",
+    }],
+  )
+
+  forward_to = [
+    prometheus.remote_write.mimir_remote_write.receiver,
+  ]
+}

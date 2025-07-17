@@ -1,0 +1,163 @@
+// Sample config for Alloy.
+//
+// For a full configuration reference, see https://grafana.com/docs/alloy
+logging {
+  level = "warn"
+}
+
+
+//MIMIR Prometheus
+prometheus.remote_write "mimir_remote_write" {
+  endpoint {
+    tls_config {
+      insecure_skip_verify = true
+    }
+    url = "https://mimir-gateway.example.com/api/v1/push"
+    basic_auth {
+      username = "myuser"
+      password = "mypass"
+    }
+    // If your Mimir requires a specific tenant ID (X-Scope-OrgID header), uncomment and set it:
+    // headers {
+    //   "X-Scope-OrgID" = "YOUR_TENANT_ID"
+    // }
+    // If Mimir uses a custom CA certificate, uncomment and add:
+    // tls_config {
+    //   ca_file = "/etc/alloy/certs/mimir-ca.crt" # Path to your Mimir CA cert
+    // }
+    // tls_config {
+    //   insecure_skip_verify = true
+    // }
+  }
+}
+
+prometheus.exporter.unix "default" {
+  include_exporter_metrics = true
+  disable_collectors       = ["mdadm"]
+}
+
+prometheus.scrape "default" {
+  targets = array.concat(
+    prometheus.exporter.unix.default.targets,
+    [{
+      // Self-collect metrics
+      job         = "alloy",
+      __address__ = "127.0.0.1:12345",
+    }],
+  )
+
+  forward_to = [
+    // Metrics collected by this scrape job will be sent to the Mimir remote_write endpoint
+    prometheus.remote_write.mimir_remote_write.receiver,
+  ]
+}
+
+
+
+
+
+// LOKI
+loki.source.api "listener" {
+    http {
+        listen_address = "127.0.0.1"
+        listen_port    = 9999
+    }
+
+    labels = { "source" = "api" }
+
+    forward_to = [loki.process.process_logs.receiver]
+}
+
+loki.process "process_logs" {
+
+    // Stage 1
+    stage.json {
+        expressions = {
+            log = "",
+            ts  = "timestamp",
+        }
+    }
+
+    // Stage 2
+    stage.timestamp {
+        source = "ts"
+        format = "RFC3339"
+    }
+
+    // Stage 3
+    stage.json {
+        source = "log"
+
+        expressions = {
+            is_secret = "",
+            level     = "",
+            log_line  = "message",
+        }
+    }
+
+    // Stage 4
+    stage.drop {
+        source = "is_secret"
+        value  = "true"
+    }
+
+    // Stage 5
+    stage.labels {
+        values = {
+            level = "",
+        }
+    }
+
+    // Stage 6
+    stage.output {
+        source = "log_line"
+    }
+
+    // This stage adds static values to the labels on the log line
+    stage.static_labels {
+        values = {
+            source = "demo-api",
+        }
+    }
+
+    forward_to = [loki.write.local_loki.receiver]
+}
+
+
+loki.write "local_loki" {
+    endpoint {
+        url = "https://loki-gateway.example.com/loki/api/v1/push"
+        tenant_id = "org1"
+        tls_config {
+            insecure_skip_verify = true
+        }
+        basic_auth {
+            username = "lokiuser"
+            password = "mypass"
+        }
+    }
+}
+
+
+loki.write "syslog_loki" {
+  endpoint {
+    url = "https://loki-gateway.example.com/loki/api/v1/push"
+    tenant_id = "org1"
+    tls_config {
+      insecure_skip_verify = true
+    }
+    basic_auth {
+      username = "lokiuser"
+      password = "mypass"
+    }
+  }
+}
+
+loki.source.file "syslog_source" {
+  targets = [
+    { __path__ = "/var/log/syslog" },
+  ]
+  forward_to    = [loki.write.syslog_loki.receiver]
+  tail_from_end = true
+}
+// } :contentReference[oaicite:1]{index=1}
