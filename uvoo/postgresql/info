@@ -1,2 +1,2 @@
-version: postgresql:17.5-bookworm
-force: false
+version: 17.5-bookworm
+force: true
