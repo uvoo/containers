@@ -40,7 +40,7 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends postgresql-plpython3-17 \
-    libcurl4-openssl-dev \ # required for http from above
+    libcurl4-openssl-dev \
     postgresql-17-cron; \
     rm -rf /var/lib/apt/lists/*
 
