@@ -1,16 +1,55 @@
-FROM ghcr.io/cloudnative-pg/postgresql:17.5-bookworm
+# ---- Build stage: compile pgsql-http against PG 17 ----
+FROM ghcr.io/cloudnative-pg/postgresql:17.5-bookworm AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+ARG PGSQL_HTTP_VER=1.7.0
 
-# To install any package we need to be root
+# Become root before using apt
 USER root
 
-# We update the package list, install our package
-# and clean up any cache from the package manager
-RUN set -xe; \
+# Tools + PG dev headers for v17 (PGXS)
+RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        "postgresql-plpython3-17" ; \
-    rm -fr /tmp/* ; \
-    rm -rf /var/lib/apt/lists/*;
+    postgresql-server-dev-17 \
+    libcurl4-openssl-dev \
+    unzip \
+    ca-certificates \
+    curl \
+    make \
+    g++ 
 
-# Change to the uid of postgres (26)
+WORKDIR /tmp/build
+RUN set -eux; \
+    curl -fsSL -o pgsql-http.zip "https://github.com/pramsey/pgsql-http/archive/refs/tags/v${PGSQL_HTTP_VER}.zip"; \
+    unzip -q pgsql-http.zip; \
+    cd pgsql-http-${PGSQL_HTTP_VER}; \
+    make; \
+    make install
+
+# ---- Runtime stage: PG + plpython + http extension artifacts ----
+FROM ghcr.io/cloudnative-pg/postgresql:17.5-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ARG PGSQL_HTTP_VER=1.7.0
+ENV PGSQL_HTTP_VER="${PGSQL_HTTP_VER}"
+
+# Become root to install packages/copy files
+USER root
+
+# Install PL/Python for PG17 (runtime dep only)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-plpython3-17; \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy only the built extension artifacts from builder
+# (shared library + extension control/SQL files)
+COPY --from=builder /usr/lib/postgresql/17/lib/http.so /usr/lib/postgresql/17/lib/
+COPY --from=builder /usr/share/postgresql/17/extension/http* /usr/share/postgresql/17/extension/
+
+# Drop privileges back to the postgres UID used by CNPG images
 USER 26
+
+# (Optional) Show the version at build time for traceability
+# docker build --build-arg PGSQL_HTTP_VER=1.7.0 .
+
