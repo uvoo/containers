@@ -39,7 +39,9 @@ USER root
 # Install PL/Python for PG17 (runtime dep only)
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends postgresql-plpython3-17 libcurl4-openssl-dev; \
+    apt-get install -y --no-install-recommends postgresql-plpython3-17 \
+    libcurl4-openssl-dev \ # required for http from above
+    postgresql-17-cron \
     rm -rf /var/lib/apt/lists/*
 
 # Copy only the built extension artifacts from builder
