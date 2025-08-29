@@ -36,12 +36,28 @@ ENV PGSQL_HTTP_VER="${PGSQL_HTTP_VER}"
 # Become root to install packages/copy files
 USER root
 
-# Install PL/Python for PG17 (runtime dep only)
+# Install PL/Python, pg_cron & http libcurl dep for PG17 (runtime dep only)
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends postgresql-plpython3-17 \
     libcurl4-openssl-dev \
     postgresql-17-cron; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install dependencies and TimescaleDB
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        gnupg wget ca-certificates \
+    ; \
+    echo "deb https://packagecloud.io/timescale/timescaledb/debian bookworm main" \
+        > /etc/apt/sources.list.d/timescaledb.list; \
+    wget -qO - https://packagecloud.io/timescale/timescaledb/gpgkey \
+        | gpg --dearmor > /etc/apt/trusted.gpg.d/timescaledb.gpg; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        timescaledb-2-postgresql-17 \
+    ; \
     rm -rf /var/lib/apt/lists/*
 
 # Copy only the built extension artifacts from builder
