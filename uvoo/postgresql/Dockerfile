@@ -11,6 +11,8 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
+    python3-paramiko \
+    python3-scp \
     postgresql-server-dev-18 \
     libcurl4-openssl-dev \
     unzip \
