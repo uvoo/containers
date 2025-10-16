@@ -1,2 +1,2 @@
 version: 17.5-bookworm-3
-force: false
+force: true
