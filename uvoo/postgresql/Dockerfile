@@ -12,8 +12,6 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-    python3-paramiko \
-    python3-scp \
     postgresql-server-dev-17 \
     libcurl4-openssl-dev \
     unzip \
@@ -44,6 +42,8 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends postgresql-plpython3-17 \
+    python3-paramiko \
+    python3-scp \
     libcurl4-openssl-dev \
     postgresql-17-cron; \
     rm -rf /var/lib/apt/lists/*
