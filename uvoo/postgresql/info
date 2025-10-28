@@ -1,2 +1,2 @@
-version: 17.5-bookworm-5
-force: true
+version: 17.5-bookworm-6
+force: false
