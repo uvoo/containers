@@ -44,6 +44,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends postgresql-plpython3-17 \
     python3-paramiko \
     python3-scp \
+    openssh-client \
     libcurl4-openssl-dev \
     postgresql-17-cron; \
     rm -rf /var/lib/apt/lists/*
