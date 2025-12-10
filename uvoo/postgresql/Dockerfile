@@ -43,6 +43,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends postgresql-plpython3-17 \
     python3-paramiko \
+    python3-winrm \
     python3-scp \
     openssh-client \
     libcurl4-openssl-dev \
