@@ -1,7 +1,7 @@
 # ---- Build stage: compile pgsql-http against PG 18 ----
 # FIX: Added "AS builder"
-# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-trixie AS builder
-FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm AS builder
+FROM ghcr.io/cloudnative-pg/postgresql:18.3-standard-trixie AS builder
+# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG PGSQL_HTTP_VER=1.7.0
