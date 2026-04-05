@@ -1,26 +1,27 @@
-# ---- Build stage: compile pgsql-http against PG 17 ----
-FROM ghcr.io/cloudnative-pg/postgresql:17.5-bookworm AS builder
-# FROM ghcr.io/cloudnative-pg/postgresql:18.0-trixie AS builder
-# FROM ghcr.io/cloudnative-pg/postgresql:18.0-standard-trixie AS builder
+# ---- Build stage: compile pgsql-http against PG 18 ----
+# FIX: Added "AS builder"
+# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-trixie AS builder
+FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm AS builder
+
 ENV DEBIAN_FRONTEND=noninteractive
 ARG PGSQL_HTTP_VER=1.7.0
 
-# Become root before using apt
 USER root
 
-# Tools + PG dev headers for v17 (PGXS)
+# Install build dependencies
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-    postgresql-server-dev-17 \
+    postgresql-server-dev-18 \
     libcurl4-openssl-dev \
     unzip \
     ca-certificates \
     curl \
     make \
-    g++ 
+    g++
 
 WORKDIR /tmp/build
+
 RUN set -eux; \
     curl -fsSL -o pgsql-http.zip "https://github.com/pramsey/pgsql-http/archive/refs/tags/v${PGSQL_HTTP_VER}.zip"; \
     unzip -q pgsql-http.zip; \
@@ -29,51 +30,49 @@ RUN set -eux; \
     make install
 
 # ---- Runtime stage: PG + plpython + http extension artifacts ----
-FROM ghcr.io/cloudnative-pg/postgresql:17.5-bookworm
+# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-trixie
+FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG PGSQL_HTTP_VER=1.7.0
+# Good practice: Persist the version in env for debugging
 ENV PGSQL_HTTP_VER="${PGSQL_HTTP_VER}"
 
-# Become root to install packages/copy files
 USER root
 
-# Install PL/Python, pg_cron & http libcurl dep for PG17 (runtime dep only)
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends postgresql-plpython3-17 \
-    python3-paramiko \
-    python3-winrm \
-    python3-scp \
-    openssh-client \
-    libcurl4-openssl-dev \
-    postgresql-17-cron; \
-    rm -rf /var/lib/apt/lists/*
-
-# Install dependencies and TimescaleDB
+# Combined installation to reduce layers
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        gnupg wget ca-certificates \
+        # Python & System utils
+        gnupg \
+        ca-certificates \
+        curl \
+        openssh-client \
+        postgresql-plpython3-18 \
+        python3-paramiko \
+        python3-winrm \
+        python3-scp \
+        # Runtime lib only (swapped -dev for libcurl4)
+        libcurl4 \
+        postgresql-18-cron \
     ; \
+    # Setup TimescaleDB Repo
     echo "deb https://packagecloud.io/timescale/timescaledb/debian bookworm main" \
         > /etc/apt/sources.list.d/timescaledb.list; \
-    wget -qO - https://packagecloud.io/timescale/timescaledb/gpgkey \
+    curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey \
         | gpg --dearmor > /etc/apt/trusted.gpg.d/timescaledb.gpg; \
+    # Install Timescale
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        timescaledb-2-postgresql-17 \
+        timescaledb-2-postgresql-18 \
+        postgresql-client-18 \
     ; \
+    # Clean up
     rm -rf /var/lib/apt/lists/*
 
-# Copy only the built extension artifacts from builder
-# (shared library + extension control/SQL files)
-COPY --from=builder /usr/lib/postgresql/17/lib/http.so /usr/lib/postgresql/17/lib/
-COPY --from=builder /usr/share/postgresql/17/extension/http* /usr/share/postgresql/17/extension/
+# Copy artifacts from "builder"
+COPY --from=builder /usr/lib/postgresql/18/lib/http.so /usr/lib/postgresql/18/lib/
+COPY --from=builder /usr/share/postgresql/18/extension/http* /usr/share/postgresql/18/extension/
 
-# Drop privileges back to the postgres UID used by CNPG images
 USER 26
-
-# (Optional) Show the version at build time for traceability
-# docker build --build-arg PGSQL_HTTP_VER=1.7.0 .
-
