@@ -1,7 +1,5 @@
 # ---- Build stage: compile pgsql-http against PG 18 ----
-# FIX: Added "AS builder"
 FROM ghcr.io/cloudnative-pg/postgresql:18.3-standard-trixie AS builder
-# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG PGSQL_HTTP_VER=1.7.0
@@ -30,8 +28,7 @@ RUN set -eux; \
     make install
 
 # ---- Runtime stage: PG + plpython + http extension artifacts ----
-# FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-trixie
-FROM ghcr.io/cloudnative-pg/postgresql:18.1-standard-bookworm
+FROM ghcr.io/cloudnative-pg/postgresql:18.3-standard-trixie
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG PGSQL_HTTP_VER=1.7.0
@@ -44,7 +41,6 @@ USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        # Python & System utils
         gnupg \
         ca-certificates \
         curl \
@@ -53,16 +49,17 @@ RUN set -eux; \
         python3-paramiko \
         python3-winrm \
         python3-scp \
-        # Runtime lib only (swapped -dev for libcurl4)
         libcurl4 \
         postgresql-18-cron \
+        postgresql-common \
     ; \
-    # Setup TimescaleDB Repo
-    echo "deb https://packagecloud.io/timescale/timescaledb/debian bookworm main" \
-        > /etc/apt/sources.list.d/timescaledb.list; \
+    /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y; \
+    install -m 0755 -d /etc/apt/keyrings; \
     curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey \
-        | gpg --dearmor > /etc/apt/trusted.gpg.d/timescaledb.gpg; \
-    # Install Timescale
+        | gpg --dearmor -o /etc/apt/keyrings/timescaledb.gpg; \
+    chmod a+r /etc/apt/keyrings/timescaledb.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/debian trixie main" \
+        > /etc/apt/sources.list.d/timescaledb.list; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         timescaledb-2-postgresql-18 \
