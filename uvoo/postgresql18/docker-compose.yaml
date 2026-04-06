@@ -16,7 +16,9 @@ services:
     command: >
       postgres
       -c listen_addresses='*'
-      -c shared_preload_libraries='timescaledb'
+      -c shared_preload_libraries='timescaledb,pg_cron'
+      # -c cron.database_name='postgres' # default
+      # -c cron.database_name='app'
 
 volumes:
   pgdata:
