@@ -1,30 +1,14 @@
 # Readme
 
-## Test build 
-
-### Build
-
 ```
-docker build -t pg-trixie .
+docker build -t uvoo/postgresql:18.3-trixie-0 .
 ```
 
-
-### Run
-
-Since this custom standalone build drops the official Docker entrypoint scripts, the initdb process, pg_hba.conf configuration, and listen_addresses binding must be handled manually when launching an empty data directory.
-
 ```
-docker run --rm -it \
-  --name pg-test \
-  -p 5432:5432 \
-  pg-trixie \
-  bash -c "initdb -D \$PGDATA && echo 'host all all all trust' >> \$PGDATA/pg_hba.conf && postgres -c listen_addresses='*'"
+docker-compose down -v 
+docker-compose up
+PGPASSWORD=supersecret psql -h localhost -p 35432 -U app -d app
 ```
 
-### Connect
-
-```
-psql -h localhost -U postgres -d postgres
-```
 
 
