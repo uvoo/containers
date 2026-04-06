@@ -1,0 +1,22 @@
+services:
+  db:
+    image: uvoo/postgresql:18.3-trixie-0
+    container_name: pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: supersecret
+      POSTGRES_DB: app
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      # POSTGRES_HOST_AUTH_METHOD
+    ports:
+      - "35432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    command: >
+      postgres
+      -c listen_addresses='*'
+      -c shared_preload_libraries='timescaledb'
+
+volumes:
+  pgdata:
