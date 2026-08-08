@@ -1,7 +1,7 @@
 # Build pgsql-http against PostgreSQL 18
 FROM postgres:18-trixie AS builder
 
-ARG PGSQL_HTTP_VER=1.7.0
+ARG PGSQL_HTTP_VER=1.7.2
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN set -eux; \

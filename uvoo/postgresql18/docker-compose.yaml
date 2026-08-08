@@ -1,14 +1,17 @@
 services:
   db:
-    image: uvoo/postgresql:18.3-trixie-0
+    image: uvoo/postgresql18:latest
     container_name: pg18
     restart: unless-stopped
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: supersecret
       POSTGRES_DB: app
-      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
-      # POSTGRES_HOST_AUTH_METHOD
+      POSTGRES_INITDB_ARGS: "--auth-local=trust --auth-host=scram-sha-256"
+      # _POSTGRES_EXTRA_CONFIG: |
+      #   listen_addresses='*'
+      #   shared_preload_libraries = 'timescaledb,pg_cron'
+      #   cron.database_name = 'app'
     ports:
       - "35432:5432"
     volumes:
@@ -17,8 +20,7 @@ services:
       postgres
       -c listen_addresses='*'
       -c shared_preload_libraries='timescaledb,pg_cron'
-      # -c cron.database_name='postgres' # default
-      # -c cron.database_name='app'
+      -c cron.database_name='app'
 
 volumes:
   pgdata:
